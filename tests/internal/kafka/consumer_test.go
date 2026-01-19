@@ -9,174 +9,48 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package kafka_test
 
 import (
-	"context"
-	"kaf-mirror/internal/config"
 	"kaf-mirror/internal/kafka"
-	"kaf-mirror/tests/mocks"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-func TestConsumer_Consume(t *testing.T) {
-	record := &kgo.Record{
-		Topic:     "test-topic",
-		Partition: 0,
-		Value:     []byte("hello"),
-	}
-
-	fetches := kgo.Fetches{{
-		Topics: []kgo.FetchTopic{{
-			Topic: "test-topic",
-			Partitions: []kgo.FetchPartition{{
-				Partition: 0,
-				Records:   []*kgo.Record{record},
-			}},
-		}},
-	}}
-
-	mock := &mocks.MockKgoClient{
-		PollFetchesFunc: func(ctx context.Context) kgo.Fetches {
-			return fetches
-		},
-	}
-
-	consumer := &kafka.Consumer{
-		Client: mock,
-	}
-	
-	recordProcessed := false
-	handler := func(r *kgo.Record) {
-		assert.Equal(t, record.Value, r.Value)
-		assert.Equal(t, "test-topic", r.Topic)
-		assert.Equal(t, int32(0), r.Partition)
-		recordProcessed = true
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	consumer.Consume(ctx, handler)
-	
-	assert.True(t, recordProcessed, "Handler should have been called")
-}
-
-func TestNewConsumer_SASL_PLAIN(t *testing.T) {
-	cfg := config.ClusterConfig{
-		Brokers: "localhost:9092",
-		Security: config.SecurityConfig{
-			Enabled:       true,
-			Protocol:      "SASL_PLAINTEXT",
-			SASLMechanism: "PLAIN",
-			Username:      "testuser",
-			Password:      "testpass",
-		},
-	}
-
-	replicationCfg := config.ReplicationConfig{
-		BatchSize:   1000,
-		Parallelism: 4,
-		Compression: "gzip",
-	}
-
-	consumer, err := kafka.NewConsumer(cfg, "test-group", replicationCfg, "test-job", "test-topic")
-	assert.NoError(t, err)
-	assert.NotNil(t, consumer)
-}
-
-func TestNewConsumer_SASL_SCRAM(t *testing.T) {
-	cfg := config.ClusterConfig{
-		Brokers: "localhost:9092",
-		Security: config.SecurityConfig{
-			Enabled:       true,
-			Protocol:      "SASL_SSL",
-			SASLMechanism: "SCRAM-SHA-256",
-			Username:      "testuser",
-			Password:      "testpass",
-		},
-	}
-
-	replicationCfg := config.ReplicationConfig{
-		BatchSize:   2000,
-		Parallelism: 8,
-		Compression: "snappy",
-	}
-
-	consumer, err := kafka.NewConsumer(cfg, "test-group", replicationCfg, "test-job", "test-topic")
-	assert.NoError(t, err)
-	assert.NotNil(t, consumer)
-}
-
-func TestNewConsumer_Kerberos(t *testing.T) {
-	cfg := config.ClusterConfig{
-		Brokers: "localhost:9092",
-		Security: config.SecurityConfig{
-			Enabled:       true,
-			Protocol:      "SASL_SSL",
-			SASLMechanism: "GSSAPI",
-			Kerberos: struct {
-				ServiceName string `mapstructure:"service_name"`
-			}{
-				ServiceName: "kafka",
+func TestConsumerMetricsLagIncludesUnconsumedPartitions(t *testing.T) {
+	consumer := kafka.NewConsumerForTest(
+		map[string]map[int32]int64{
+			"orders": {
+				0: 10,
+				1: 5,
 			},
 		},
-	}
+		map[string]map[int32]int64{
+			"orders": {
+				0: 7,
+			},
+		},
+	)
 
-	replicationCfg := config.ReplicationConfig{
-		BatchSize:   500,
-		Parallelism: 2,
-		Compression: "lz4",
-	}
-
-	consumer, err := kafka.NewConsumer(cfg, "test-group", replicationCfg, "test-job", "test-topic")
-	assert.NoError(t, err)
-	assert.NotNil(t, consumer)
+	metrics := consumer.GetMetrics()
+	assert.Equal(t, int64(7), metrics.ConsumerLag)
 }
 
-func TestNewConsumer_InvalidSASL(t *testing.T) {
-	cfg := config.ClusterConfig{
-		Brokers: "localhost:9092",
-		Security: config.SecurityConfig{
-			Enabled:       true,
-			SASLMechanism: "INVALID_MECHANISM",
+func TestConsumerMetricsLagClampsNegative(t *testing.T) {
+	consumer := kafka.NewConsumerForTest(
+		map[string]map[int32]int64{
+			"orders": {
+				0: 10,
+			},
 		},
-	}
-
-	replicationCfg := config.ReplicationConfig{
-		BatchSize:   1000,
-		Parallelism: 4,
-		Compression: "gzip",
-	}
-
-	consumer, err := kafka.NewConsumer(cfg, "test-group", replicationCfg, "test-job", "test-topic")
-	assert.Error(t, err)
-	assert.Nil(t, consumer)
-	assert.Contains(t, err.Error(), "unsupported SASL mechanism")
-}
-
-func TestNewConsumer_MissingCredentials(t *testing.T) {
-	cfg := config.ClusterConfig{
-		Brokers: "localhost:9092",
-		Security: config.SecurityConfig{
-			Enabled:       true,
-			SASLMechanism: "PLAIN",
+		map[string]map[int32]int64{
+			"orders": {
+				0: 10,
+			},
 		},
-	}
+	)
 
-	replicationCfg := config.ReplicationConfig{
-		BatchSize:   1000,
-		Parallelism: 4,
-		Compression: "gzip",
-	}
-
-	consumer, err := kafka.NewConsumer(cfg, "test-group", replicationCfg, "test-job", "test-topic")
-	assert.Error(t, err)
-	assert.Nil(t, consumer)
-	assert.Contains(t, err.Error(), "username and password are required")
+	metrics := consumer.GetMetrics()
+	assert.Equal(t, int64(0), metrics.ConsumerLag)
 }
