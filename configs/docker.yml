@@ -21,6 +21,14 @@ database:
   path: "data/kaf-mirror.db"
   retention_days: 30
 
+compliance:
+  schedule:
+    enabled: true
+    run_hour: 2
+    daily: true
+    weekly: false
+    monthly: false
+
 clusters:
   source:
     provider: "plain"

@@ -28,6 +28,9 @@ func TestLoadConfig(t *testing.T) {
 	assert.NotEmpty(t, cfg.Server.Host)
 	assert.Greater(t, cfg.Server.Port, 0)
 	assert.Equal(t, 30, cfg.Database.RetentionDays)
+	assert.True(t, cfg.Compliance.Schedule.Enabled)
+	assert.Equal(t, 2, cfg.Compliance.Schedule.RunHour)
+	assert.True(t, cfg.Compliance.Schedule.Daily)
 }
 
 func TestConfigValidate_RetentionBounds(t *testing.T) {
@@ -47,6 +50,19 @@ func TestConfigValidate_RetentionBounds(t *testing.T) {
 	assert.NoError(t, err)
 
 	cfg.Database.RetentionDays = 45
+	err = cfg.Validate()
+	assert.Error(t, err)
+
+	cfg.Database.RetentionDays = 7
+	cfg.Compliance.Schedule.Enabled = true
+	cfg.Compliance.Schedule.RunHour = 25
+	err = cfg.Validate()
+	assert.Error(t, err)
+
+	cfg.Compliance.Schedule.RunHour = 2
+	cfg.Compliance.Schedule.Daily = false
+	cfg.Compliance.Schedule.Weekly = false
+	cfg.Compliance.Schedule.Monthly = false
 	err = cfg.Validate()
 	assert.Error(t, err)
 }

@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package manager
 
 import (
@@ -23,6 +22,7 @@ import (
 	"kaf-mirror/internal/metrics"
 	"kaf-mirror/pkg/logger"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -39,20 +39,22 @@ type Hub interface {
 
 // JobManager manages the lifecycle of replication jobs.
 type JobManager struct {
-	Db                *sqlx.DB
-	Config            *config.Config
-	KafMirrors       map[string]kafka.KafMirror
-	Hub               Hub
-	Mu                sync.Mutex
-	KafMirrorFactory KafMirrorFactory
-	metricsSink       metrics.Sink
-	AIClient          *ai.Client
-	close             chan struct{}
-	aiAnalysisTicker  *time.Ticker
-	wg                sync.WaitGroup
-	dbOpsWg           sync.WaitGroup 
-	lastAIAnalysis    map[string]time.Time
-	lastAIMetric      map[string]database.ReplicationMetric
+	Db                   *sqlx.DB
+	Config               *config.Config
+	KafMirrors           map[string]kafka.KafMirror
+	Hub                  Hub
+	Mu                   sync.Mutex
+	KafMirrorFactory     KafMirrorFactory
+	metricsSink          metrics.Sink
+	AIClient             *ai.Client
+	close                chan struct{}
+	aiAnalysisTicker     *time.Ticker
+	wg                   sync.WaitGroup
+	dbOpsWg              sync.WaitGroup
+	lastAIAnalysis       map[string]time.Time
+	lastAIMetric         map[string]database.ReplicationMetric
+	lastComplianceReport map[string]time.Time
+	closing              int32
 }
 
 func New(db *sqlx.DB, cfg *config.Config, hub Hub) *JobManager {
@@ -69,16 +71,17 @@ func New(db *sqlx.DB, cfg *config.Config, hub Hub) *JobManager {
 	}
 
 	jm := &JobManager{
-		Db:               db,
-		Config:           cfg,
-		KafMirrors:       make(map[string]kafka.KafMirror),
-		Hub:              hub,
-		KafMirrorFactory: kafka.NewKafMirror,
-		metricsSink:      sink,
-		AIClient:         ai.NewClient(aiConfig),
-		close:            make(chan struct{}),
-		lastAIAnalysis:   make(map[string]time.Time),
-		lastAIMetric:     make(map[string]database.ReplicationMetric),
+		Db:                   db,
+		Config:               cfg,
+		KafMirrors:           make(map[string]kafka.KafMirror),
+		Hub:                  hub,
+		KafMirrorFactory:     kafka.NewKafMirror,
+		metricsSink:          sink,
+		AIClient:             ai.NewClient(aiConfig),
+		close:                make(chan struct{}),
+		lastAIAnalysis:       make(map[string]time.Time),
+		lastAIMetric:         make(map[string]database.ReplicationMetric),
+		lastComplianceReport: make(map[string]time.Time),
 	}
 
 	jm.wg.Add(1)
@@ -86,17 +89,17 @@ func New(db *sqlx.DB, cfg *config.Config, hub Hub) *JobManager {
 		defer jm.wg.Done()
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
-		
+
 		sleepRemaining := 2 * time.Second
 		for sleepRemaining > 0 {
 			select {
 			case <-ticker.C:
 				sleepRemaining -= 100 * time.Millisecond
 			case <-jm.close:
-				return 
+				return
 			}
 		}
-		
+
 		select {
 		case <-jm.close:
 			return
@@ -108,12 +111,13 @@ func New(db *sqlx.DB, cfg *config.Config, hub Hub) *JobManager {
 		}
 	}()
 
-	jm.wg.Add(5)
+	jm.wg.Add(6)
 	go jm.startPruning()
 	go jm.startAIAnalysis()
 	go jm.startHistoricalAnalysis()
 	go jm.startTopicHealthChecks()
 	go jm.startMirrorStateUpdates()
+	go jm.startComplianceScheduler()
 	return jm
 }
 
@@ -144,9 +148,10 @@ func (jm *JobManager) reconcileAndStartJobs() error {
 }
 
 func (jm *JobManager) Close() {
+	atomic.StoreInt32(&jm.closing, 1)
 	close(jm.close)
-	jm.wg.Wait()       
-	jm.dbOpsWg.Wait()  
+	jm.wg.Wait()
+	jm.dbOpsWg.Wait()
 }
 
 func (jm *JobManager) startPruning() {
@@ -156,11 +161,11 @@ func (jm *JobManager) startPruning() {
 
 	for {
 		select {
-			case <-ticker.C:
-				err := database.PruneOldData(jm.Db, jm.Config.Database.RetentionDays)
-				if err != nil {
-					logger.Error("Failed to prune old data: %v", err)
-				}
+		case <-ticker.C:
+			err := database.PruneOldData(jm.Db, jm.Config.Database.RetentionDays)
+			if err != nil {
+				logger.Error("Failed to prune old data: %v", err)
+			}
 			err = database.ArchiveInactiveClusters(jm.Db, 72*time.Hour)
 			if err != nil {
 				logger.Error("Failed to archive inactive clusters: %v", err)
@@ -169,6 +174,106 @@ func (jm *JobManager) startPruning() {
 			return
 		}
 	}
+}
+
+func (jm *JobManager) startComplianceScheduler() {
+	defer jm.wg.Done()
+	if !jm.Config.Compliance.Schedule.Enabled {
+		return
+	}
+
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	run := func(now time.Time) {
+		schedule := jm.Config.Compliance.Schedule
+		periods := []string{}
+		if schedule.Daily {
+			periods = append(periods, "daily")
+		}
+		if schedule.Weekly {
+			periods = append(periods, "weekly")
+		}
+		if schedule.Monthly {
+			periods = append(periods, "monthly")
+		}
+
+		userID, err := database.GetInitialUserID(jm.Db)
+		if err != nil {
+			logger.Warn("Compliance scheduler skipped: failed to locate initial admin user: %v", err)
+			return
+		}
+
+		for _, period := range periods {
+			lastRun := jm.lastComplianceReport[period]
+			if !shouldRunComplianceReport(period, now, lastRun, schedule.RunHour) {
+				continue
+			}
+			if _, err := database.GenerateComplianceReport(jm.Db, period, userID); err != nil {
+				logger.Error("Failed to generate %s compliance report: %v", period, err)
+				continue
+			}
+			jm.lastComplianceReport[period] = now
+			logger.Info("Generated %s compliance report", period)
+		}
+	}
+
+	run(time.Now())
+
+	for {
+		select {
+		case <-ticker.C:
+			run(time.Now())
+		case <-jm.close:
+			return
+		}
+	}
+}
+
+func shouldRunComplianceReport(period string, now time.Time, lastRun time.Time, runHour int) bool {
+	if now.Hour() != runHour {
+		return false
+	}
+
+	switch period {
+	case "daily":
+		return !sameDay(now, lastRun)
+	case "weekly":
+		if now.Weekday() != time.Monday {
+			return false
+		}
+		return !sameISOWeek(now, lastRun)
+	case "monthly":
+		if now.Day() != 1 {
+			return false
+		}
+		return !sameMonth(now, lastRun)
+	default:
+		return false
+	}
+}
+
+func sameDay(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
+}
+
+func sameISOWeek(a, b time.Time) bool {
+	ay, aw := a.ISOWeek()
+	by, bw := b.ISOWeek()
+	return ay == by && aw == bw
+}
+
+func sameMonth(a, b time.Time) bool {
+	ay, am, _ := a.Date()
+	by, bm, _ := b.Date()
+	return ay == by && am == bm
+}
+
+// ShouldRunComplianceReportForTest exposes scheduling logic for tests.
+func ShouldRunComplianceReportForTest(period string, now time.Time, lastRun time.Time, runHour int) bool {
+	return shouldRunComplianceReport(period, now, lastRun, runHour)
 }
 
 func (jm *JobManager) StartAllJobs() error {
@@ -200,12 +305,12 @@ func (jm *JobManager) SyncJobStates() error {
 	jobs, err := database.ListJobs(jm.Db)
 	if err != nil {
 		logger.Error("Failed to list jobs for state sync: %v", err)
-		return nil 
+		return nil
 	}
 
 	for _, job := range jobs {
 		_, isRunning := jm.KafMirrors[job.ID]
-		
+
 		if job.Status == "active" && !isRunning {
 			logger.Warn("Job %s marked as active in DB but not running - marking as paused", job.ID)
 			job.Status = "paused"
@@ -226,7 +331,7 @@ func (jm *JobManager) SyncJobStates() error {
 
 func (jm *JobManager) RestartAllJobs() error {
 	logger.Info("Restarting all jobs...")
-	
+
 	if err := jm.SyncJobStates(); err != nil {
 		logger.Error("Failed to sync job states: %v", err)
 	}
@@ -266,7 +371,7 @@ func (jm *JobManager) RestartAllJobs() error {
 			}
 		}
 	}
-	
+
 	logger.Info("Completed restart of all jobs (%d jobs restarted)", restartedCount)
 	return nil
 }
@@ -329,7 +434,7 @@ func (jm *JobManager) ForceRestartJob(jobID string) error {
 	if err := jm.healthCheckCluster(sourceCluster, "source"); err != nil {
 		return fmt.Errorf("source cluster health check failed: %v", err)
 	}
-	
+
 	if err := jm.healthCheckCluster(targetCluster, "target"); err != nil {
 		return fmt.Errorf("target cluster health check failed: %v", err)
 	}
@@ -501,7 +606,7 @@ func (jm *JobManager) StopJob(jobID string) error {
 		logger.Error("Failed to update job status for job %s: %v", jobID, err)
 		// Don't return error - job was stopped successfully in memory
 	}
-	
+
 	logger.Info("Successfully stopped job '%s'", jobID)
 	return nil
 }
@@ -536,7 +641,7 @@ func (jm *JobManager) startAIAnalysis() {
 	if jm.AIClient == nil {
 		return
 	}
-	
+
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -575,7 +680,7 @@ func (jm *JobManager) performSmartAnalysis() {
 		if jm.Config.AI.SelfHealing.DynamicThrottling {
 			go jm.performDynamicThrottling(job.ID, job.Name)
 		}
-		
+
 		if jm.shouldTriggerAIAnalysis(job.ID, job.Name) {
 			go jm.analyzeJobTimeSeries(job.ID, job.Name)
 		}
@@ -601,7 +706,7 @@ func (jm *JobManager) shouldTriggerAIAnalysis(jobID, jobName string) bool {
 		WHERE job_id = ? AND timestamp > datetime('now', '-10 minutes')
 		ORDER BY timestamp DESC LIMIT 10
 	`
-	
+
 	var recentMetrics []database.ReplicationMetric
 	err := jm.Db.Select(&recentMetrics, metricsQuery, jobID)
 	if err != nil || len(recentMetrics) < 1 {
@@ -691,18 +796,18 @@ func (jm *JobManager) detectAnomalies(metrics []database.ReplicationMetric, jobN
 	recentLag /= float64(len(recent))
 
 	// Anomaly detection based on AI implementation rules:
-	
+
 	// 1. Throughput drops >30%
 	if baselineThroughput > 0 && (baselineThroughput-recentThroughput)/baselineThroughput > 0.30 {
-		logger.WarnAI("ai", "anomaly", "", "Throughput drop detected for job %s: %.0f -> %.0f (%.1f%% drop)", 
-			jobName, baselineThroughput, recentThroughput, 
+		logger.WarnAI("ai", "anomaly", "", "Throughput drop detected for job %s: %.0f -> %.0f (%.1f%% drop)",
+			jobName, baselineThroughput, recentThroughput,
 			(baselineThroughput-recentThroughput)/baselineThroughput*100)
 		return true
 	}
 
 	// 2. Lag spikes (doubled or >1000 messages)
 	if (baselineLag > 0 && recentLag > baselineLag*2) || recentLag > 1000 {
-		logger.WarnAI("ai", "anomaly", "", "Lag spike detected for job %s: %.0f -> %.0f messages", 
+		logger.WarnAI("ai", "anomaly", "", "Lag spike detected for job %s: %.0f -> %.0f messages",
 			jobName, baselineLag, recentLag)
 		return true
 	}
@@ -715,7 +820,7 @@ func (jm *JobManager) detectAnomalies(metrics []database.ReplicationMetric, jobN
 	totalErrors := recentErrors + baselineErrors
 	errorRate := float64(totalErrors) / float64(totalMessages) * 100
 	if errorRate > 0.5 {
-		logger.WarnAI("ai", "anomaly", "", "High error rate detected for job %s: %.2f%% (%d errors)", 
+		logger.WarnAI("ai", "anomaly", "", "High error rate detected for job %s: %.2f%% (%d errors)",
 			jobName, errorRate, totalErrors)
 		return true
 	}
@@ -733,12 +838,12 @@ func (jm *JobManager) detectAnomalies(metrics []database.ReplicationMetric, jobN
 // analyzeJobTimeSeries analyzes time-series patterns for a specific job using enhanced log + metrics analysis
 func (jm *JobManager) analyzeJobTimeSeries(jobID, jobName string) {
 	logger.InfoAI("ai", "analysis", jobID, "Starting comprehensive AI analysis for job %s", jobName)
-	
+
 	startTime := time.Now()
-	
+
 	// Generate multiple insight types for comprehensive analysis
 	insightTypes := []string{"enhanced_analysis", "recommendation", "optimization"}
-	
+
 	successCount := 0
 	for _, insightType := range insightTypes {
 		err := database.GenerateEnhancedAIInsight(jm.Db, jm.AIClient, jobID, insightType)
@@ -747,21 +852,21 @@ func (jm *JobManager) analyzeJobTimeSeries(jobID, jobName string) {
 		} else {
 			successCount++
 		}
-		
+
 		// Brief delay between analyses to avoid rate limiting
 		time.Sleep(500 * time.Millisecond)
 	}
-	
+
 	responseTime := int(time.Since(startTime).Milliseconds())
-	
+
 	if successCount == 0 {
 		logger.ErrorAI("ai", "analysis", jobID, "All AI analyses failed for job %s after %dms", jobName, responseTime)
-		
+
 		// Fallback to metrics-only analysis if all enhanced analyses fail
 		jm.fallbackMetricsAnalysis(jobID, jobName)
 		return
 	}
-	
+
 	logger.InfoAI("ai", "analysis", jobID, "Comprehensive AI analysis completed for job %s in %dms (%d/%d successful)", jobName, responseTime, successCount, len(insightTypes))
 }
 
@@ -779,7 +884,7 @@ func (jm *JobManager) fallbackMetricsAnalysis(jobID, jobName string) {
 		WHERE job_id = ? AND timestamp > datetime('now', '-10 minutes')
 		ORDER BY timestamp ASC
 	`
-	
+
 	var metrics []database.ReplicationMetric
 	err := jm.Db.Select(&metrics, query, jobID)
 	if err != nil {
@@ -794,7 +899,7 @@ func (jm *JobManager) fallbackMetricsAnalysis(jobID, jobName string) {
 
 	// Build comprehensive time-series analysis prompt
 	analysisPrompt := jm.buildTimeSeriesPrompt(jobID, jobName, metrics)
-	
+
 	insight, err := jm.AIClient.GetAnomalyDetection(context.Background(), analysisPrompt)
 	if err != nil {
 		logger.ErrorAI("ai", "fallback", jobID, "Fallback AI analysis failed: %v", err)
@@ -803,14 +908,14 @@ func (jm *JobManager) fallbackMetricsAnalysis(jobID, jobName string) {
 
 	// Determine severity based on metrics analysis
 	severity := jm.determineSeverity(metrics)
-	
+
 	aiInsight := &database.AIInsight{
-		JobID:             &jobID,
-		InsightType:       "fallback_analysis",
-		Recommendation:    insight,
-		SeverityLevel:     severity,
+		JobID:            &jobID,
+		InsightType:      "fallback_analysis",
+		Recommendation:   insight,
+		SeverityLevel:    severity,
 		ResolutionStatus: "new",
-		AIModel:           jm.Config.AI.Model,
+		AIModel:          jm.Config.AI.Model,
 	}
 
 	if err := database.InsertAIInsight(jm.Db, aiInsight); err != nil {
@@ -964,12 +1069,12 @@ func (jm *JobManager) AnalyzeJobHistory(jobID, jobName string, periodDays int, g
 	}
 
 	aiInsight := &database.AIInsight{
-		JobID:             &jobID,
-		InsightType:       "historical_trend",
-		Recommendation:    insight,
-		SeverityLevel:     "info", // Historical trends are informational
+		JobID:            &jobID,
+		InsightType:      "historical_trend",
+		Recommendation:   insight,
+		SeverityLevel:    "info", // Historical trends are informational
 		ResolutionStatus: "new",
-		AIModel:           jm.Config.AI.Model,
+		AIModel:          jm.Config.AI.Model,
 	}
 
 	if err := database.InsertAIInsight(jm.Db, aiInsight); err != nil {
@@ -1012,12 +1117,12 @@ func (jm *JobManager) determineSeverity(metrics []database.ReplicationMetric) st
 	if len(metrics) == 0 {
 		return "info"
 	}
-	
+
 	// Check for high error rates
 	totalErrors := 0
 	totalMessages := 0
 	maxLag := 0
-	
+
 	for _, m := range metrics {
 		totalErrors += m.ErrorCount
 		totalMessages += m.MessagesReplicated
@@ -1025,16 +1130,16 @@ func (jm *JobManager) determineSeverity(metrics []database.ReplicationMetric) st
 			maxLag = m.CurrentLag
 		}
 	}
-	
+
 	errorRate := float64(totalErrors) / float64(totalMessages) * 100
-	
+
 	// Determine severity based on error rate and lag
 	if errorRate > 5.0 || maxLag > 10000 {
 		return "high"
 	} else if errorRate > 1.0 || maxLag > 5000 {
 		return "medium"
 	}
-	
+
 	return "info"
 }
 
@@ -1044,16 +1149,19 @@ func (jm *JobManager) AnalyzeJobNow(jobID, jobName string) {
 		logger.Error("Cannot analyze job %s: AI client not configured", jobName)
 		return
 	}
-	
+
 	logger.InfoAI("ai", "manual", jobID, "Manual AI analysis triggered for job %s", jobName)
-	
+
 	// Force comprehensive analysis regardless of rate limiting
 	go jm.analyzeJobTimeSeries(jobID, jobName)
 }
 
 func (jm *JobManager) CreateInventorySnapshot(jobID, snapshotType string) {
+	if atomic.LoadInt32(&jm.closing) == 1 {
+		return
+	}
 	logger.Info("Creating inventory snapshot for job %s (type: %s)", jobID, snapshotType)
-	
+
 	// Check if database and required tables are available
 	var tablesExist int
 	err := jm.Db.Get(&tablesExist, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('job_inventory_snapshots', 'replication_jobs', 'kafka_clusters')")
@@ -1065,24 +1173,27 @@ func (jm *JobManager) CreateInventorySnapshot(jobID, snapshotType string) {
 		logger.Warn("Required database tables not available, skipping inventory snapshot for job %s", jobID)
 		return
 	}
-	
+
 	// Create the snapshot record in the database
 	snapshotID, err := database.CreateInventorySnapshot(jm.Db, jobID, snapshotType)
 	if err != nil {
 		logger.Error("Failed to create inventory snapshot for job %s: %v", jobID, err)
 		return
 	}
-	
+
 	logger.Info("Created inventory snapshot %d for job %s", snapshotID, jobID)
-	
+
 	// Get job details for cluster information
 	job, err := database.GetJob(jm.Db, jobID)
 	if err != nil {
 		logger.Error("Failed to get job details for inventory snapshot: %v", err)
 		return
 	}
-	
+
 	// Create cluster inventories in background with error resilience
+	if atomic.LoadInt32(&jm.closing) == 1 {
+		return
+	}
 	jm.dbOpsWg.Add(2)
 	go func() {
 		defer jm.dbOpsWg.Done()
@@ -1091,17 +1202,17 @@ func (jm *JobManager) CreateInventorySnapshot(jobID, snapshotType string) {
 				logger.Error("Inventory capture panicked for source cluster: %v", r)
 			}
 		}()
-		
+
 		// Check if close signal has been sent
 		select {
 		case <-jm.close:
 			return // Don't perform database operations during shutdown
 		default:
 		}
-		
+
 		jm.captureClusterInventory(snapshotID, job.SourceClusterName, "source")
 	}()
-	
+
 	go func() {
 		defer jm.dbOpsWg.Done()
 		defer func() {
@@ -1109,17 +1220,17 @@ func (jm *JobManager) CreateInventorySnapshot(jobID, snapshotType string) {
 				logger.Error("Inventory capture panicked for target cluster: %v", r)
 			}
 		}()
-		
+
 		// Check if close signal has been sent
 		select {
 		case <-jm.close:
 			return // Don't perform database operations during shutdown
 		default:
 		}
-		
+
 		jm.captureClusterInventory(snapshotID, job.TargetClusterName, "target")
 	}()
-	
+
 	logger.Info("Inventory snapshot capture initiated for job %s", jobID)
 }
 
@@ -1135,13 +1246,13 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 		logger.Warn("Database tables not initialized, skipping inventory capture for cluster %s", clusterName)
 		return
 	}
-	
+
 	cluster, err := database.GetCluster(jm.Db, clusterName)
 	if err != nil {
 		logger.Error("Failed to get cluster %s for inventory: %v", clusterName, err)
 		return
 	}
-	
+
 	// Create admin client for cluster inspection
 	clusterConfig := config.ClusterConfig{
 		Provider: cluster.Provider,
@@ -1151,7 +1262,7 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 			APISecret: cluster.APISecret,
 		},
 	}
-	
+
 	adminClient, err := kafka.NewAdminClient(clusterConfig)
 	if err != nil {
 		logger.Error("Failed to create admin client for cluster %s: %v", clusterName, err)
@@ -1160,7 +1271,7 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 		return
 	}
 	defer adminClient.Close()
-	
+
 	// Get cluster metadata
 	clusterInfo, err := adminClient.GetClusterInfo(context.Background())
 	if err != nil {
@@ -1168,7 +1279,7 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 		jm.recordBasicClusterInventory(snapshotID, cluster, clusterType)
 		return
 	}
-	
+
 	// Check if inventory tables exist before inserting
 	var inventoryTablesExist int
 	err = jm.Db.Get(&inventoryTablesExist, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('cluster_inventory', 'connection_inventory', 'topic_inventory', 'partition_inventory')")
@@ -1180,7 +1291,7 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 		logger.Warn("Inventory tables not available, skipping detailed inventory for cluster %s", clusterName)
 		return
 	}
-	
+
 	// Record comprehensive cluster inventory
 	controllerID := int(clusterInfo.ControllerID)
 	clusterInventory := database.ClusterInventory{
@@ -1194,13 +1305,13 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 		ControllerID: &controllerID,
 		ClusterID:    clusterInfo.ClusterID,
 	}
-	
+
 	clusterInventoryID, err := database.InsertClusterInventory(jm.Db, clusterInventory)
 	if err != nil {
 		logger.Error("Failed to insert cluster inventory: %v", err)
 		return
 	}
-	
+
 	// Record connection inventory
 	connectionTimeMs := 50 // Approximate connection time
 	var connectionType string
@@ -1209,24 +1320,24 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 	} else {
 		connectionType = "target_producer"
 	}
-	
+
 	connectionInventory := database.ConnectionInventory{
 		SnapshotID:           snapshotID,
 		ConnectionType:       connectionType,
 		Provider:             cluster.Provider,
 		Brokers:              cluster.Brokers,
 		SecurityProtocol:     "SASL_SSL",
-		SaslMechanism:       "PLAIN",
-		APIKeyPrefix:        jm.maskAPIKey(cluster.APIKey),
+		SaslMechanism:        "PLAIN",
+		APIKeyPrefix:         jm.maskAPIKey(cluster.APIKey),
 		ConnectionSuccessful: true,
 		ConnectionTimeMs:     &connectionTimeMs,
 		ErrorMessage:         "",
 	}
-	
+
 	if err := database.InsertConnectionInventory(jm.Db, connectionInventory); err != nil {
 		logger.Error("Failed to insert connection inventory: %v", err)
 	}
-	
+
 	// Record topic inventories
 	for topicName, topic := range clusterInfo.Topics {
 		topicInventory := database.TopicInventory{
@@ -1235,15 +1346,15 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 			PartitionCount:     int(topic.Partitions),
 			ReplicationFactor:  int(topic.ReplicationFactor),
 			IsInternal:         false, // Non-internal topics from cluster info
-			ConfigData:         "{}", // Topic config would be fetched separately
+			ConfigData:         "{}",  // Topic config would be fetched separately
 		}
-		
+
 		topicInventoryID, err := database.InsertTopicInventory(jm.Db, topicInventory)
 		if err != nil {
 			logger.Error("Failed to insert topic inventory for %s: %v", topicName, err)
 			continue
 		}
-		
+
 		// Record partition inventories
 		for _, partition := range topic.PartitionInfo {
 			leaderID := int(partition.Leader)
@@ -1252,16 +1363,16 @@ func (jm *JobManager) captureClusterInventory(snapshotID int, clusterName, clust
 				PartitionID:      int(partition.ID),
 				LeaderID:         &leaderID,
 				ReplicaIDs:       jm.int32SliceToJSON(partition.Replicas),
-				IsrIDs:          jm.int32SliceToJSON(partition.ISR),
-				HighWaterMark:   0, // Would need separate call to get high water marks
+				IsrIDs:           jm.int32SliceToJSON(partition.ISR),
+				HighWaterMark:    0, // Would need separate call to get high water marks
 			}
-			
+
 			if err := database.InsertPartitionInventory(jm.Db, partitionInventory); err != nil {
 				logger.Error("Failed to insert partition inventory for %s-%d: %v", topicName, partition.ID, err)
 			}
 		}
 	}
-	
+
 	logger.Info("Completed cluster inventory capture for %s (%s)", clusterName, clusterType)
 }
 
@@ -1278,7 +1389,7 @@ func (jm *JobManager) recordBasicClusterInventory(snapshotID int, cluster *datab
 		ControllerID: nil,
 		ClusterID:    "",
 	}
-	
+
 	if _, err := database.InsertClusterInventory(jm.Db, clusterInventory); err != nil {
 		logger.Error("Failed to insert basic cluster inventory: %v", err)
 	}
@@ -1310,7 +1421,7 @@ func (jm *JobManager) int32SliceToJSON(slice []int32) string {
 func (jm *JobManager) buildJobConfig(sourceCluster, targetCluster *database.KafkaCluster, mappings []database.TopicMapping, job *database.ReplicationJob) (*config.Config, error) {
 	sourceConfig := config.ClusterConfig{
 		Provider: sourceCluster.Provider,
-		Brokers: sourceCluster.Brokers,
+		Brokers:  sourceCluster.Brokers,
 		Security: config.SecurityConfig{
 			APIKey:    sourceCluster.APIKey,
 			APISecret: sourceCluster.APISecret,
@@ -1319,7 +1430,7 @@ func (jm *JobManager) buildJobConfig(sourceCluster, targetCluster *database.Kafk
 
 	targetConfig := config.ClusterConfig{
 		Provider: targetCluster.Provider,
-		Brokers: targetCluster.Brokers,
+		Brokers:  targetCluster.Brokers,
 		Security: config.SecurityConfig{
 			APIKey:    targetCluster.APIKey,
 			APISecret: targetCluster.APISecret,
@@ -1452,7 +1563,7 @@ func (jm *JobManager) performDynamicThrottling(jobID, jobName string) {
 		WHERE job_id = ? AND timestamp > datetime('now', '-15 minutes')
 		ORDER BY timestamp DESC LIMIT 20
 	`
-	
+
 	var recentMetrics []database.ReplicationMetric
 	err := jm.Db.Select(&recentMetrics, metricsQuery, jobID)
 	if err != nil || len(recentMetrics) < 5 {
@@ -1476,7 +1587,7 @@ func (jm *JobManager) performDynamicThrottling(jobID, jobName string) {
 		if err := jm.applyThrottlingChanges(jobID, jobName, job, throttlingDecision); err != nil {
 			logger.ErrorAI("ai", "throttling", jobID, "Failed to apply throttling changes: %v", err)
 		} else {
-			logger.InfoAI("ai", "throttling", jobID, "Applied throttling changes to job %s: batch_size=%d, parallelism=%d (reason: %s)", 
+			logger.InfoAI("ai", "throttling", jobID, "Applied throttling changes to job %s: batch_size=%d, parallelism=%d (reason: %s)",
 				jobName, throttlingDecision.NewBatchSize, throttlingDecision.NewParallelism, throttlingDecision.Reason)
 		}
 	} else {
@@ -1485,10 +1596,10 @@ func (jm *JobManager) performDynamicThrottling(jobID, jobName string) {
 }
 
 type ThrottlingDecision struct {
-	NewBatchSize    int
-	NewParallelism  int
-	Reason          string
-	Confidence      float64
+	NewBatchSize   int
+	NewParallelism int
+	Reason         string
+	Confidence     float64
 }
 
 func (jm *JobManager) analyzeThrottlingMetrics(metrics []database.ReplicationMetric, job *database.ReplicationJob) *ThrottlingDecision {
@@ -1520,7 +1631,7 @@ func (jm *JobManager) analyzeThrottlingMetrics(metrics []database.ReplicationMet
 	if avgLag > 5000 && errorRate < 1.0 {
 		newBatchSize := jm.calculateOptimalBatchSize(currentBatchSize, avgThroughput, avgLag, "increase")
 		newParallelism := jm.calculateOptimalParallelism(currentParallelism, avgThroughput, maxLag, "increase")
-		
+
 		if newBatchSize != currentBatchSize || newParallelism != currentParallelism {
 			return &ThrottlingDecision{
 				NewBatchSize:   newBatchSize,
@@ -1534,7 +1645,7 @@ func (jm *JobManager) analyzeThrottlingMetrics(metrics []database.ReplicationMet
 	if errorRate > 2.0 {
 		newBatchSize := jm.calculateOptimalBatchSize(currentBatchSize, avgThroughput, avgLag, "decrease")
 		newParallelism := jm.calculateOptimalParallelism(currentParallelism, avgThroughput, maxLag, "decrease")
-		
+
 		if newBatchSize != currentBatchSize || newParallelism != currentParallelism {
 			return &ThrottlingDecision{
 				NewBatchSize:   newBatchSize,
@@ -1547,7 +1658,7 @@ func (jm *JobManager) analyzeThrottlingMetrics(metrics []database.ReplicationMet
 
 	if avgThroughput < 100 && avgLag < 1000 && errorRate < 0.5 {
 		newBatchSize := jm.calculateOptimalBatchSize(currentBatchSize, avgThroughput, avgLag, "optimize")
-		
+
 		if newBatchSize != currentBatchSize {
 			return &ThrottlingDecision{
 				NewBatchSize:   newBatchSize,
@@ -1572,7 +1683,7 @@ func (jm *JobManager) calculateOptimalBatchSize(current int, throughput, lag flo
 			newSize = current + 500
 		}
 		return newSize
-		
+
 	case "decrease":
 		newSize := int(float64(current) * 0.7)
 		if newSize < 100 {
@@ -1582,14 +1693,14 @@ func (jm *JobManager) calculateOptimalBatchSize(current int, throughput, lag flo
 			newSize = current - 200
 		}
 		return newSize
-		
+
 	case "optimize":
 		if throughput < 50 {
 			return max(100, current/2)
 		} else {
 			return min(5000, current+300)
 		}
-		
+
 	default:
 		return current
 	}
@@ -1603,14 +1714,14 @@ func (jm *JobManager) calculateOptimalParallelism(current int, throughput float6
 			newParallelism = 20
 		}
 		return newParallelism
-		
+
 	case "decrease":
 		newParallelism := current - 1
 		if newParallelism < 1 {
 			newParallelism = 1
 		}
 		return newParallelism
-		
+
 	default:
 		return current
 	}
@@ -1623,7 +1734,7 @@ func (jm *JobManager) shouldApplyThrottling(jobID string, decision *ThrottlingDe
 		AND timestamp > datetime('now', '-10 minutes')
 		ORDER BY timestamp DESC LIMIT 1
 	`
-	
+
 	var lastThrottling string
 	err := jm.Db.Get(&lastThrottling, lastThrottlingQuery, jobID)
 	if err == nil {
@@ -1644,30 +1755,30 @@ func (jm *JobManager) applyThrottlingChanges(jobID, jobName string, job *databas
 
 	job.BatchSize = decision.NewBatchSize
 	job.Parallelism = decision.NewParallelism
-	
+
 	if err := database.UpdateJob(jm.Db, job); err != nil {
 		return fmt.Errorf("failed to update job configuration: %v", err)
 	}
 
 	logger.InfoAI("ai", "throttling", jobID, "Restarting job %s to apply throttling changes", jobName)
-	
+
 	kafMirror.Stop()
 	delete(jm.KafMirrors, jobID)
-	
+
 	time.Sleep(2 * time.Second)
-	
+
 	if err := jm.startJobWithNewConfig(jobID, job); err != nil {
 		return fmt.Errorf("failed to restart job with new config: %v", err)
 	}
 
 	insight := &database.AIInsight{
-		JobID:             &jobID,
-		InsightType:       "throttling_adjustment",
-		Recommendation:    fmt.Sprintf("Applied dynamic throttling: batch_size=%d, parallelism=%d. %s", decision.NewBatchSize, decision.NewParallelism, decision.Reason),
-		SeverityLevel:     "info",
+		JobID:            &jobID,
+		InsightType:      "throttling_adjustment",
+		Recommendation:   fmt.Sprintf("Applied dynamic throttling: batch_size=%d, parallelism=%d. %s", decision.NewBatchSize, decision.NewParallelism, decision.Reason),
+		SeverityLevel:    "info",
 		ResolutionStatus: "applied",
-		AIModel:           "dynamic-throttling-system",
-		AccuracyScore:     &decision.Confidence,
+		AIModel:          "dynamic-throttling-system",
+		AccuracyScore:    &decision.Confidence,
 	}
 
 	if err := database.InsertAIInsight(jm.Db, insight); err != nil {
@@ -1753,7 +1864,7 @@ func (jm *JobManager) healthCheckCluster(cluster *database.KafkaCluster, cluster
 		return fmt.Errorf("%s cluster %s has no active brokers", clusterType, cluster.Name)
 	}
 
-	logger.Info("%s cluster %s health check passed: %d brokers, %d topics", 
+	logger.Info("%s cluster %s health check passed: %d brokers, %d topics",
 		clusterType, cluster.Name, clusterInfo.BrokerCount, len(clusterInfo.Topics))
 	return nil
 }
@@ -1821,7 +1932,7 @@ func (jm *JobManager) validateMirrorState(jobID string, sourceCluster, targetClu
 
 	for _, health := range sourceTopicHealth {
 		if !health.IsHealthy {
-			return fmt.Errorf("source topic %s is unhealthy: %d under-replicated partitions", 
+			return fmt.Errorf("source topic %s is unhealthy: %d under-replicated partitions",
 				health.Name, health.UnderReplicatedPartitions)
 		}
 	}
@@ -1829,7 +1940,7 @@ func (jm *JobManager) validateMirrorState(jobID string, sourceCluster, targetClu
 	existingProgress, err := database.GetMirrorProgress(jm.Db, jobID)
 	if err == nil && len(existingProgress) > 0 {
 		logger.Info("Found existing mirror progress for job %s - validating for safe restart", jobID)
-		
+
 		consumerGroup := fmt.Sprintf("kaf-mirror-job-%s", jobID)
 		mirrorAnalysis, err := targetAdmin.AnalyzeMirrorState(ctx, sourceAdmin, jobID, topicMap, consumerGroup)
 		if err != nil {
@@ -2023,8 +2134,8 @@ func (jm *JobManager) updateMirrorState(jobID string) {
 			}
 
 			progress := database.MirrorProgress{
-				JobID:                 jobID,
-				SourceTopic:           topicComparison.SourceTopic,
+				JobID:                jobID,
+				SourceTopic:          topicComparison.SourceTopic,
 				TargetTopic:          topicComparison.TargetTopic,
 				PartitionID:          int(partitionComparison.PartitionID),
 				SourceOffset:         partitionComparison.SourceOffset,
@@ -2052,7 +2163,7 @@ func (jm *JobManager) updateMirrorState(jobID string) {
 				resumePointsMap[topicName][partition] = offset
 			}
 		}
-		
+
 		if err := database.CalculateResumePoints(jm.Db, jobID, resumePointsMap, nil); err != nil {
 			logger.Error("Failed to store resume points for job %s: %v", jobID, err)
 		}
@@ -2066,7 +2177,7 @@ func (jm *JobManager) updateMirrorState(jobID string) {
 				gap := database.MirrorGap{
 					JobID:            jobID,
 					SourceTopic:      topicComparison.SourceTopic,
-					TargetTopic:     topicComparison.TargetTopic,
+					TargetTopic:      topicComparison.TargetTopic,
 					PartitionID:      int(partitionComparison.PartitionID),
 					GapStartOffset:   partitionComparison.TargetOffset,
 					GapEndOffset:     partitionComparison.SourceOffset,
@@ -2102,22 +2213,22 @@ func (jm *JobManager) updateMirrorState(jobID string) {
 	recommendationsJSON, _ := json.Marshal(recommendations)
 
 	dbMirrorAnalysis := &database.MirrorStateAnalysis{
-		JobID:                 jobID,
-		AnalysisType:          "gap_detection",
-		SourceClusterState:    fmt.Sprintf("Source cluster: %s (%d topics)", sourceCluster.Name, len(topicMap)),
-		TargetClusterState:    fmt.Sprintf("Target cluster: %s (%d topics)", targetCluster.Name, len(topicMap)),
-		AnalysisResults:       analysisResults,
-		Recommendations:       string(recommendationsJSON),
-		CriticalIssuesCount:   len(offsetComparison.CriticalIssues),
-		WarningIssuesCount:    len(offsetComparison.Warnings),
-		AnalyzedAt:            now,
-		AnalyzerVersion:       "1.0",
+		JobID:               jobID,
+		AnalysisType:        "gap_detection",
+		SourceClusterState:  fmt.Sprintf("Source cluster: %s (%d topics)", sourceCluster.Name, len(topicMap)),
+		TargetClusterState:  fmt.Sprintf("Target cluster: %s (%d topics)", targetCluster.Name, len(topicMap)),
+		AnalysisResults:     analysisResults,
+		Recommendations:     string(recommendationsJSON),
+		CriticalIssuesCount: len(offsetComparison.CriticalIssues),
+		WarningIssuesCount:  len(offsetComparison.Warnings),
+		AnalyzedAt:          now,
+		AnalyzerVersion:     "1.0",
 	}
 
 	if _, err := database.StoreMirrorStateAnalysis(jm.Db, *dbMirrorAnalysis); err != nil {
 		logger.Error("Failed to store mirror state analysis for job %s: %v", jobID, err)
 	}
 
-	logger.Info("Successfully updated comprehensive mirror state for job %s: %d topics, %d gaps, %d critical issues", 
+	logger.Info("Successfully updated comprehensive mirror state for job %s: %d topics, %d gaps, %d critical issues",
 		jobID, len(topicMap), offsetComparison.TotalGapsDetected, len(offsetComparison.CriticalIssues))
 }

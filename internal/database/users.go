@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package database
 
 import (
@@ -50,6 +49,13 @@ func GetUserByUsername(db *sqlx.DB, username string) (*User, error) {
 	var user User
 	err := db.Get(&user, "SELECT * FROM users WHERE username = ?", username)
 	return &user, err
+}
+
+// GetInitialUserID returns the initial admin user ID.
+func GetInitialUserID(db *sqlx.DB) (int, error) {
+	var userID int
+	err := db.Get(&userID, "SELECT id FROM users WHERE is_initial = 1 ORDER BY id LIMIT 1")
+	return userID, err
 }
 
 // ListUsers retrieves all users from the database.

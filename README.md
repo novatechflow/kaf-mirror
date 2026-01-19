@@ -202,6 +202,8 @@ Compliance features include:
 - AI usage analytics
 - Performance metrics analysis
 
+Automated scheduling is controlled by `compliance.schedule` (daily/weekly/monthly) and runs at `run_hour` local time; weekly runs on Monday and monthly runs on the first day of the month.
+
 **c) `admin-cli`: Recovery**
 
 - `./admin-cli repair`: Reseed default roles/permissions; if no users exist, create `admin@localhost` with a random password.

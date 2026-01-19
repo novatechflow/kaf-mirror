@@ -141,29 +141,38 @@ type configData struct {
 		} `yaml:"security"`
 	} `yaml:"clusters"`
 	Monitoring struct {
-		Enabled    bool   `yaml:"enabled"`
-		Platform   string `yaml:"platform"`
-		Splunk     struct {
+		Enabled  bool   `yaml:"enabled"`
+		Platform string `yaml:"platform"`
+		Splunk   struct {
 			HECEndpoint string `yaml:"hec_endpoint"`
 			HECToken    string `yaml:"hec_token"`
 			Index       string `yaml:"index"`
 		} `yaml:"splunk"`
-		Loki       struct {
+		Loki struct {
 			Endpoint string `yaml:"endpoint"`
 		} `yaml:"loki"`
 		Prometheus struct {
 			PushGateway string `yaml:"push_gateway"`
 		} `yaml:"prometheus"`
 	} `yaml:"monitoring"`
+	Compliance struct {
+		Schedule struct {
+			Enabled bool `yaml:"enabled"`
+			RunHour int  `yaml:"run_hour"`
+			Daily   bool `yaml:"daily"`
+			Weekly  bool `yaml:"weekly"`
+			Monthly bool `yaml:"monthly"`
+		} `yaml:"schedule"`
+	} `yaml:"compliance"`
 	AI struct {
 		Provider string `yaml:"provider"`
 		Endpoint string `yaml:"endpoint"`
 		Token    string `yaml:"token"`
 		Model    string `yaml:"model"`
 		Features struct {
-			AnomalyDetection      bool `yaml:"anomaly_detection"`
+			AnomalyDetection        bool `yaml:"anomaly_detection"`
 			PerformanceOptimization bool `yaml:"performance_optimization"`
-			IncidentAnalysis      bool `yaml:"incident_analysis"`
+			IncidentAnalysis        bool `yaml:"incident_analysis"`
 		} `yaml:"features"`
 	} `yaml:"ai"`
 	TopicMappings []struct {
@@ -454,7 +463,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 			req.Header.Set("Authorization", "Bearer "+token)
 			req.Header.Set("Content-Type", "application/json")
 
-		resp, err := httpClient.Do(req)
+			resp, err := httpClient.Do(req)
 			if err != nil {
 				fmt.Printf("Error: Failed to connect to backend: %v\n", err)
 				return
@@ -785,7 +794,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 						fmt.Println("Operation cancelled.")
 						return
 					}
-					
+
 					// Validate broker string format
 					if err := ValidateBrokerString(brokers, provider); err != nil {
 						fmt.Printf("Error: %v\n", err)
@@ -802,119 +811,119 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 			}
 
 			clusterData := map[string]interface{}{
-				"name":        name,
-				"provider":    provider,
-				"cluster_id":  clusterID,
-				"brokers":     brokers,
+				"name":       name,
+				"provider":   provider,
+				"cluster_id": clusterID,
+				"brokers":    brokers,
 				"security": map[string]string{
 					"api_key":    apiKey,
 					"api_secret": apiSecret,
 				},
 			}
 
-		for {
-			fmt.Println("Testing connection...")
-			testBody, _ := json.Marshal(clusterData)
-			req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/v1/clusters/test", BackendURL), bytes.NewBuffer(testBody))
-			if err != nil {
-				fmt.Printf("Error: Failed to build request: %v\n", err)
-				return
+			for {
+				fmt.Println("Testing connection...")
+				testBody, _ := json.Marshal(clusterData)
+				req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/v1/clusters/test", BackendURL), bytes.NewBuffer(testBody))
+				if err != nil {
+					fmt.Printf("Error: Failed to build request: %v\n", err)
+					return
+				}
+				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Content-Type", "application/json")
+
+				resp, err := httpClient.Do(req)
+				if err != nil {
+					fmt.Printf("Error: Failed to connect to backend: %v\n", err)
+					return
+				}
+
+				if resp.StatusCode != http.StatusOK {
+					body, _ := ioutil.ReadAll(resp.Body)
+					resp.Body.Close()
+					fmt.Printf("Error: Connection test failed: %s\n%s\n", resp.Status, body)
+					var reEnter bool
+					prompt := &survey.Confirm{
+						Message: "Would you like to re-enter the details?",
+					}
+					if err := survey.AskOne(prompt, &reEnter); err != nil {
+						fmt.Println("Operation cancelled.")
+						return
+					}
+					if reEnter {
+						if provider == "confluent" {
+							promptBrokers := &survey.Input{Message: "Bootstrap URL:"}
+							survey.AskOne(promptBrokers, &brokers)
+							promptClusterID := &survey.Input{Message: "Cluster ID:"}
+							survey.AskOne(promptClusterID, &clusterID)
+							promptAPIKey := &survey.Input{Message: "API Key:"}
+							survey.AskOne(promptAPIKey, &apiKey)
+							promptAPISecret := &survey.Password{Message: "API Secret:"}
+							survey.AskOne(promptAPISecret, &apiSecret)
+						} else if provider == "azure" {
+							var namespace string
+							promptNamespace := &survey.Input{Message: "Event Hubs Namespace:"}
+							survey.AskOne(promptNamespace, &namespace)
+							brokers = fmt.Sprintf("%s.servicebus.windows.net:9093", namespace)
+
+							promptConnStr := &survey.Password{Message: "Connection String:"}
+							survey.AskOne(promptConnStr, &clusterID)
+						} else {
+							promptBrokers := &survey.Input{Message: "Brokers (comma-separated):"}
+							survey.AskOne(promptBrokers, &brokers)
+						}
+						clusterData = map[string]interface{}{
+							"name":       name,
+							"provider":   provider,
+							"cluster_id": clusterID,
+							"brokers":    brokers,
+							"security": map[string]string{
+								"api_key":    apiKey,
+								"api_secret": apiSecret,
+							},
+						}
+						continue
+					} else {
+						return
+					}
+				}
+				fmt.Println("Connection test successful.")
+				break
 			}
+
+			// Prepare cluster creation request with provider-specific fields
+			clusterRequest := map[string]interface{}{
+				"name":     name,
+				"provider": provider,
+				"brokers":  brokers,
+			}
+
+			if provider == "confluent" {
+				clusterRequest["cluster_id"] = clusterID
+				clusterRequest["api_key"] = apiKey
+				clusterRequest["api_secret"] = apiSecret
+			} else if provider == "azure" {
+				clusterRequest["connection_string"] = clusterID // For Azure, clusterID contains connection string
+			}
+
+			reqBody, _ := json.Marshal(clusterRequest)
+
+			req, _ := http.NewRequest("POST", fmt.Sprintf("%s/api/v1/clusters", BackendURL), bytes.NewBuffer(reqBody))
 			req.Header.Set("Authorization", "Bearer "+token)
 			req.Header.Set("Content-Type", "application/json")
 
-			resp, err := httpClient.Do(req)
+			resp, err := client.Do(req)
 			if err != nil {
 				fmt.Printf("Error: Failed to connect to backend: %v\n", err)
 				return
 			}
+			defer resp.Body.Close()
 
-			if resp.StatusCode != http.StatusOK {
+			if resp.StatusCode != http.StatusCreated {
 				body, _ := ioutil.ReadAll(resp.Body)
-				resp.Body.Close()
-				fmt.Printf("Error: Connection test failed: %s\n%s\n", resp.Status, body)
-				var reEnter bool
-				prompt := &survey.Confirm{
-					Message: "Would you like to re-enter the details?",
-				}
-				if err := survey.AskOne(prompt, &reEnter); err != nil {
-					fmt.Println("Operation cancelled.")
-					return
-				}
-				if reEnter {
-					if provider == "confluent" {
-						promptBrokers := &survey.Input{Message: "Bootstrap URL:"}
-						survey.AskOne(promptBrokers, &brokers)
-						promptClusterID := &survey.Input{Message: "Cluster ID:"}
-						survey.AskOne(promptClusterID, &clusterID)
-						promptAPIKey := &survey.Input{Message: "API Key:"}
-						survey.AskOne(promptAPIKey, &apiKey)
-						promptAPISecret := &survey.Password{Message: "API Secret:"}
-						survey.AskOne(promptAPISecret, &apiSecret)
-					} else if provider == "azure" {
-						var namespace string
-						promptNamespace := &survey.Input{Message: "Event Hubs Namespace:"}
-						survey.AskOne(promptNamespace, &namespace)
-						brokers = fmt.Sprintf("%s.servicebus.windows.net:9093", namespace)
-
-						promptConnStr := &survey.Password{Message: "Connection String:"}
-						survey.AskOne(promptConnStr, &clusterID)
-					} else {
-						promptBrokers := &survey.Input{Message: "Brokers (comma-separated):"}
-						survey.AskOne(promptBrokers, &brokers)
-					}
-					clusterData = map[string]interface{}{
-						"name":        name,
-						"provider":    provider,
-						"cluster_id":  clusterID,
-						"brokers":     brokers,
-						"security": map[string]string{
-							"api_key":    apiKey,
-							"api_secret": apiSecret,
-						},
-					}
-					continue
-				} else {
-					return
-				}
+				fmt.Printf("Error: Failed to create cluster: %s\n%s\n", resp.Status, body)
+				return
 			}
-			fmt.Println("Connection test successful.")
-			break
-		}
-
-		// Prepare cluster creation request with provider-specific fields
-		clusterRequest := map[string]interface{}{
-			"name":     name,
-			"provider": provider,
-			"brokers":  brokers,
-		}
-		
-		if provider == "confluent" {
-			clusterRequest["cluster_id"] = clusterID
-			clusterRequest["api_key"] = apiKey
-			clusterRequest["api_secret"] = apiSecret
-		} else if provider == "azure" {
-			clusterRequest["connection_string"] = clusterID // For Azure, clusterID contains connection string
-		}
-
-		reqBody, _ := json.Marshal(clusterRequest)
-
-		req, _ := http.NewRequest("POST", fmt.Sprintf("%s/api/v1/clusters", BackendURL), bytes.NewBuffer(reqBody))
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Printf("Error: Failed to connect to backend: %v\n", err)
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			body, _ := ioutil.ReadAll(resp.Body)
-			fmt.Printf("Error: Failed to create cluster: %s\n%s\n", resp.Status, body)
-			return
-		}
 
 			fmt.Println("Cluster created successfully.")
 
@@ -1008,7 +1017,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 			req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/api/v1/clusters/%s", BackendURL, clusterName), nil)
 			req.Header.Set("Authorization", "Bearer "+token)
 
-		resp, err := httpClient.Do(req)
+			resp, err := httpClient.Do(req)
 			if err != nil {
 				fmt.Printf("Error: Failed to connect to backend: %v\n", err)
 				return
@@ -1050,7 +1059,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 			req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/api/v1/clusters/purge", BackendURL), nil)
 			req.Header.Set("Authorization", "Bearer "+token)
 
-		resp, err := httpClient.Do(req)
+			resp, err := httpClient.Do(req)
 			if err != nil {
 				fmt.Printf("Error: Failed to connect to backend: %v\n", err)
 				return
@@ -1269,7 +1278,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 			if provider == "" {
 				provider = "plain" // Handle legacy clusters with empty provider
 			}
-			
+
 			// Display current cluster information including provider
 			fmt.Printf("=== Editing Cluster: %s ===\n", safeString(currentCluster["name"], ""))
 			fmt.Printf("Provider: %s (non-editable)\n", provider)
@@ -1281,16 +1290,16 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 				fmt.Println("Current Connection String: [configured]")
 			}
 			fmt.Println()
-			
+
 			var newName, newBrokers, newAPIKey, newAPISecret, newClusterID string
 			var newConnectionString *string
-			
+
 			promptName := &survey.Input{Message: "New cluster name:", Default: safeString(currentCluster["name"], "")}
 			if err := survey.AskOne(promptName, &newName); err != nil {
 				fmt.Println("Operation cancelled.")
 				return
 			}
-			
+
 			// Collect ALL parameters first before testing connection
 			if provider == "confluent" {
 				promptBrokers := &survey.Input{Message: "New brokers (comma-separated):", Default: safeString(currentCluster["brokers"], "")}
@@ -1310,7 +1319,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 					fmt.Println("Operation cancelled.")
 					return
 				}
-				
+
 				promptAPISecret := &survey.Password{Message: "New API Secret:"}
 				if err := survey.AskOne(promptAPISecret, &newAPISecret); err != nil {
 					fmt.Println("Operation cancelled.")
@@ -1322,7 +1331,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 				if currentBrokers != "" && strings.Contains(currentBrokers, ".servicebus.windows.net") {
 					namespace = strings.Split(currentBrokers, ".")[0]
 				}
-				
+
 				promptNamespace := &survey.Input{Message: "New Event Hubs Namespace:", Default: namespace}
 				if err := survey.AskOne(promptNamespace, &namespace); err != nil {
 					fmt.Println("Operation cancelled.")
@@ -1344,7 +1353,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 						fmt.Println("Operation cancelled.")
 						return
 					}
-					
+
 					// Validate broker string format
 					if err := ValidateBrokerString(newBrokers, provider); err != nil {
 						fmt.Printf("Error: %v\n", err)
@@ -1366,7 +1375,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 				"brokers":  newBrokers,
 				"provider": provider,
 			}
-			
+
 			if provider == "confluent" {
 				testConfig["cluster_id"] = newClusterID
 				testConfig["security"] = map[string]interface{}{
@@ -1387,9 +1396,9 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 					"enabled": true,
 				}
 			}
-			
+
 			testBody, _ := json.Marshal(testConfig)
-			
+
 			req, _ = http.NewRequest("POST", fmt.Sprintf("%s/api/v1/clusters/test", BackendURL), bytes.NewBuffer(testBody))
 			req.Header.Set("Authorization", "Bearer "+token)
 			req.Header.Set("Content-Type", "application/json")
@@ -1419,10 +1428,10 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 				"provider": provider,
 				"brokers":  newBrokers,
 			}
-			
+
 			if provider == "confluent" {
 				updateCluster["api_key"] = newAPIKey
-				updateCluster["api_secret"] = newAPISecret  
+				updateCluster["api_secret"] = newAPISecret
 				updateCluster["cluster_id"] = newClusterID
 			} else if provider == "azure" {
 				updateCluster["connection_string"] = *newConnectionString
@@ -1556,12 +1565,12 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 
 func main() {
 	rootCmd := NewRootCmd()
-	
+
 	rootCmd.ParseFlags(os.Args[1:])
-	
+
 	args := rootCmd.Flags().Args()
 	hasSubcommand := len(args) > 0
-	
+
 	if !hasSubcommand {
 		httpsUrl := strings.Replace(BackendURL, "http://", "https://", 1)
 		_, err := http.Get(httpsUrl)
@@ -1580,7 +1589,7 @@ func main() {
 				fmt.Printf("Logged in as %s\n", user["username"])
 			}
 		}
-		
+
 		fmt.Printf("Connecting to: %s\n", BackendURL)
 		runShell(rootCmd)
 	} else {
@@ -1593,13 +1602,13 @@ func main() {
 
 func runShell(rootCmd *cobra.Command) {
 	var currentContext []string
-	
+
 	completer := func(d prompt.Document) []prompt.Suggest {
 		s := []prompt.Suggest{}
 		currentCmd := rootCmd
-		
+
 		fullArgs := append(currentContext, strings.Fields(d.TextBeforeCursor())...)
-		
+
 		for _, arg := range fullArgs {
 			foundCmd, _, err := currentCmd.Find([]string{arg})
 			if err == nil {
@@ -1625,7 +1634,7 @@ func runShell(rootCmd *cobra.Command) {
 					currentCmd = foundCmd
 				}
 			}
-			
+
 			if len(currentContext) > 0 {
 				fmt.Printf("\n=== %s ===\n", strings.Title(strings.Join(currentContext, " ")))
 				if currentCmd.Long != "" {
@@ -1634,7 +1643,7 @@ func runShell(rootCmd *cobra.Command) {
 					fmt.Printf("%s\n\n", currentCmd.Short)
 				}
 			}
-			
+
 			fmt.Println("Available commands:")
 			for _, subCmd := range currentCmd.Commands() {
 				fmt.Printf("  %-15s %s\n", subCmd.Name(), subCmd.Short)
@@ -1642,7 +1651,7 @@ func runShell(rootCmd *cobra.Command) {
 			fmt.Println()
 			fmt.Println("Navigation:")
 			fmt.Println("  back / ..       Go back one level")
-			fmt.Println("  root / /        Go to root menu")  
+			fmt.Println("  root / /        Go to root menu")
 			fmt.Println("  exit            Exit CLI")
 			fmt.Println()
 			return
@@ -1660,7 +1669,7 @@ func runShell(rootCmd *cobra.Command) {
 
 		args := strings.Fields(in)
 		fullArgs := append(currentContext, args...)
-		
+
 		cmd, _, err := rootCmd.Find(fullArgs)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
@@ -1670,7 +1679,7 @@ func runShell(rootCmd *cobra.Command) {
 		if cmd.Run != nil || cmd.RunE != nil {
 			rootCmd.SetArgs(fullArgs)
 			rootCmd.Execute()
-			
+
 			if !isTerminalCommand(fullArgs) {
 				if len(fullArgs) >= 2 && fullArgs[0] == "config" && fullArgs[1] == "edit" {
 					if len(fullArgs) > 2 {
@@ -1685,14 +1694,14 @@ func runShell(rootCmd *cobra.Command) {
 
 		if cmd.HasSubCommands() {
 			currentContext = fullArgs
-			
+
 			fmt.Printf("\n=== %s ===\n", strings.Title(strings.Join(fullArgs, " ")))
 			if cmd.Long != "" {
 				fmt.Printf("%s\n\n", cmd.Long)
 			} else if cmd.Short != "" {
 				fmt.Printf("%s\n\n", cmd.Short)
 			}
-			
+
 			fmt.Println("Available commands:")
 			for _, subCmd := range cmd.Commands() {
 				fmt.Printf("  %-15s %s\n", subCmd.Name(), subCmd.Short)
@@ -1707,7 +1716,7 @@ func runShell(rootCmd *cobra.Command) {
 		}
 
 		fmt.Printf("Error: Unknown command: %s\n", strings.Join(fullArgs, " "))
-		
+
 		if !isTerminalCommand(fullArgs) {
 			if len(fullArgs) >= 2 && fullArgs[0] == "config" && fullArgs[1] == "edit" {
 				if len(fullArgs) > 2 {
@@ -1731,7 +1740,7 @@ func runShell(rootCmd *cobra.Command) {
 			return fmt.Sprintf("kaf-mirror:%s> ", strings.Join(currentContext, " ")), true
 		}),
 	)
-	
+
 	p.Run()
 }
 
@@ -1757,18 +1766,18 @@ func isTerminalCommand(args []string) bool {
 	if len(args) == 0 {
 		return true
 	}
-	
+
 	terminalCommands := []string{"login", "logout", "whoami"}
 	for _, cmd := range terminalCommands {
 		if args[0] == cmd {
 			return true
 		}
 	}
-	
+
 	if len(args) >= 2 && args[1] == "list" {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -1881,6 +1890,7 @@ func runSystem(cmd *cobra.Command, args []string) {
 	configureReplication(&configData)
 	configureTopicMappings(&configData)
 	configureMonitoring(&configData)
+	configureCompliance(&configData)
 	configureAI(&configData)
 
 	yamlData, err := yaml.Marshal(&configData)
@@ -1916,8 +1926,8 @@ func configureServer(configData *configData) {
 			Validate: survey.Required,
 		},
 		{
-			Name:     "server.tls.enabled",
-			Prompt:   &survey.Confirm{Message: "Enable TLS?"},
+			Name:   "server.tls.enabled",
+			Prompt: &survey.Confirm{Message: "Enable TLS?"},
 		},
 	}
 	survey.Ask(qs, configData)
@@ -1940,8 +1950,8 @@ func configureServer(configData *configData) {
 
 	corsQs := []*survey.Question{
 		{
-			Name:     "server.cors.allowed_origins",
-			Prompt:   &survey.Input{Message: "Enter allowed CORS origins (comma-separated):", Default: "http://localhost:3000"},
+			Name:   "server.cors.allowed_origins",
+			Prompt: &survey.Input{Message: "Enter allowed CORS origins (comma-separated):", Default: "http://localhost:3000"},
 		},
 	}
 	survey.Ask(corsQs, configData)
@@ -2147,6 +2157,38 @@ func configureMonitoring(configData *configData) {
 		}
 	}
 
+}
+
+func configureCompliance(configData *configData) {
+	var enabled bool
+	promptEnabled := &survey.Confirm{
+		Message: "Enable compliance report scheduler?",
+		Default: true,
+	}
+	survey.AskOne(promptEnabled, &enabled)
+	configData.Compliance.Schedule.Enabled = enabled
+	if !enabled {
+		return
+	}
+
+	var runHour int
+	promptHour := &survey.Input{
+		Message: "Enter report run hour (0-23, local time):",
+		Default: "2",
+	}
+	survey.AskOne(promptHour, &runHour)
+	configData.Compliance.Schedule.RunHour = runHour
+
+	var daily bool
+	var weekly bool
+	var monthly bool
+	survey.AskOne(&survey.Confirm{Message: "Generate daily reports?", Default: true}, &daily)
+	survey.AskOne(&survey.Confirm{Message: "Generate weekly reports? (Monday)", Default: false}, &weekly)
+	survey.AskOne(&survey.Confirm{Message: "Generate monthly reports? (1st of month)", Default: false}, &monthly)
+
+	configData.Compliance.Schedule.Daily = daily
+	configData.Compliance.Schedule.Weekly = weekly
+	configData.Compliance.Schedule.Monthly = monthly
 }
 
 func configureReplication(configData *configData) {
@@ -2363,7 +2405,6 @@ func runDashboard(cmd *cobra.Command, args []string) {
 	}
 }
 
-
 func fetchJobs(token string) ([]map[string]interface{}, error) {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/v1/jobs", BackendURL), nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -2456,12 +2497,12 @@ func startJob(token, jobID string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return fmt.Errorf("server returned status %s: %s", resp.Status, string(body))
 	}
-	
+
 	return nil
 }
 
@@ -2499,7 +2540,7 @@ func createDocsCommand() *cobra.Command {
 			defer file.Close()
 
 			rootCmd := NewRootCmd()
-			
+
 			// Generate consolidated documentation
 			if err := generateConsolidatedDocs(rootCmd, file); err != nil {
 				fmt.Printf("Error generating documentation: %v\n", err)
@@ -2520,15 +2561,15 @@ func createDocsCommand() *cobra.Command {
 func generateConsolidatedDocs(cmd *cobra.Command, w *os.File) error {
 	fmt.Fprintf(w, "# %s\n\n", cmd.Name())
 	fmt.Fprintf(w, "%s\n\n", cmd.Short)
-	
+
 	if cmd.Long != "" {
 		fmt.Fprintf(w, "## Description\n\n%s\n\n", cmd.Long)
 	}
-	
+
 	if cmd.Example != "" {
 		fmt.Fprintf(w, "## Examples\n\n```\n%s\n```\n\n", cmd.Example)
 	}
-	
+
 	// Global flags
 	if cmd.HasAvailableFlags() {
 		fmt.Fprintf(w, "## Global Options\n\n")
@@ -2548,7 +2589,7 @@ func generateConsolidatedDocs(cmd *cobra.Command, w *os.File) error {
 		})
 		fmt.Fprintf(w, "```\n\n")
 	}
-	
+
 	// Generate docs for all subcommands recursively
 	if len(cmd.Commands()) > 0 {
 		fmt.Fprintf(w, "## Available Commands\n\n")
@@ -2561,9 +2602,9 @@ func generateConsolidatedDocs(cmd *cobra.Command, w *os.File) error {
 			}
 		}
 	}
-	
+
 	fmt.Fprintf(w, "---\n\n*Auto generated by spf13/cobra on %s*\n", time.Now().Format("2-Jan-2006"))
-	
+
 	return nil
 }
 
@@ -2572,27 +2613,27 @@ func generateCommandDocs(cmd *cobra.Command, w *os.File, headerLevel int) error 
 	// Generate header
 	headerPrefix := strings.Repeat("#", headerLevel)
 	fmt.Fprintf(w, "%s %s\n\n", headerPrefix, cmd.CommandPath())
-	
+
 	// Short description
 	if cmd.Short != "" {
 		fmt.Fprintf(w, "**%s**\n\n", cmd.Short)
 	}
-	
+
 	// Long description
 	if cmd.Long != "" && cmd.Long != cmd.Short {
 		fmt.Fprintf(w, "%s\n\n", cmd.Long)
 	}
-	
+
 	// Usage
 	fmt.Fprintf(w, "### Usage\n\n")
 	fmt.Fprintf(w, "```\n%s\n```\n\n", cmd.UseLine())
-	
+
 	// Examples
 	if cmd.Example != "" {
 		fmt.Fprintf(w, "### Examples\n\n")
 		fmt.Fprintf(w, "```\n%s\n```\n\n", cmd.Example)
 	}
-	
+
 	// Flags specific to this command
 	if cmd.HasAvailableLocalFlags() {
 		fmt.Fprintf(w, "### Options\n\n")
@@ -2612,7 +2653,7 @@ func generateCommandDocs(cmd *cobra.Command, w *os.File, headerLevel int) error 
 		})
 		fmt.Fprintf(w, "```\n\n")
 	}
-	
+
 	// Subcommands
 	if len(cmd.Commands()) > 0 {
 		availableSubCommands := make([]*cobra.Command, 0)
@@ -2621,14 +2662,14 @@ func generateCommandDocs(cmd *cobra.Command, w *os.File, headerLevel int) error 
 				availableSubCommands = append(availableSubCommands, subCmd)
 			}
 		}
-		
+
 		if len(availableSubCommands) > 0 {
 			fmt.Fprintf(w, "### Available Subcommands\n\n")
 			for _, subCmd := range availableSubCommands {
 				fmt.Fprintf(w, "- **%s** - %s\n", subCmd.Name(), subCmd.Short)
 			}
 			fmt.Fprintf(w, "\n")
-			
+
 			for _, subCmd := range availableSubCommands {
 				if err := generateCommandDocs(subCmd, w, headerLevel+1); err != nil {
 					return err
@@ -2636,10 +2677,9 @@ func generateCommandDocs(cmd *cobra.Command, w *os.File, headerLevel int) error 
 			}
 		}
 	}
-	
+
 	return nil
 }
-
 
 func restartJob(token, jobID string) error {
 	req, _ := http.NewRequest("POST", fmt.Sprintf("%s/api/v1/jobs/%s/restart", BackendURL, jobID), nil)
@@ -2649,12 +2689,12 @@ func restartJob(token, jobID string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return fmt.Errorf("server returned status %s: %s", resp.Status, string(body))
 	}
-	
+
 	return nil
 }
 
@@ -2770,7 +2810,7 @@ func createNewJob(token string) {
 
 	// Configure replication settings for this job
 	fmt.Println("\n=== Replication Settings ===")
-	
+
 	var batchSize string
 	promptBatch := &survey.Input{
 		Message: "Batch size (messages per batch):",
@@ -2810,7 +2850,7 @@ func createNewJob(token string) {
 			Default: false,
 		}
 		survey.AskOne(promptCustom, &customTarget)
-		
+
 		if customTarget {
 			promptTarget := &survey.Input{
 				Message: fmt.Sprintf("Target topic name for '%s':", topic),
@@ -2834,10 +2874,10 @@ func createNewJob(token string) {
 		"target_cluster": job.TargetCluster,
 		"mappings":       mappings,
 		"replication_settings": map[string]interface{}{
-			"batch_size":            batchSize,
-			"parallelism":          parallelism,
-			"compression":          compression,
-			"preserve_partitions":  enablePartitionMapping,
+			"batch_size":          batchSize,
+			"parallelism":         parallelism,
+			"compression":         compression,
+			"preserve_partitions": enablePartitionMapping,
 		},
 	})
 	req, _ := http.NewRequest("POST", fmt.Sprintf("%s/api/v1/jobs", BackendURL), bytes.NewBuffer(reqBody))
@@ -2876,7 +2916,7 @@ func fetchClusters(token string) ([]map[string]interface{}, error) {
 func fetchTopics(token, clusterName string) ([]string, error) {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/v1/clusters/%s/topics", BackendURL, clusterName), nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-		resp, err := httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -3066,7 +3106,7 @@ func createReplicationJob(token string) {
 
 	// Configure replication settings
 	fmt.Println("\n=== Replication Settings ===")
-	
+
 	var batchSize int
 	promptBatch := &survey.Input{
 		Message: "Batch size (messages per batch):",
@@ -3103,17 +3143,17 @@ func createReplicationJob(token string) {
 	// Topic mappings with custom target names option
 	fmt.Println("\n=== Topic Mapping Configuration ===")
 	var mappings []map[string]interface{}
-	
+
 	for _, topic := range selectedTopics {
 		var targetTopic string
 		var customTarget bool
-		
+
 		promptCustom := &survey.Confirm{
 			Message: fmt.Sprintf("Use custom target name for topic '%s'?", topic),
 			Default: false,
 		}
 		survey.AskOne(promptCustom, &customTarget)
-		
+
 		if customTarget {
 			promptTarget := &survey.Input{
 				Message: fmt.Sprintf("Target topic name for '%s':", topic),
@@ -3158,7 +3198,7 @@ func createReplicationJob(token string) {
 		Default: true,
 	}
 	survey.AskOne(promptConfirm, &confirm)
-	
+
 	if !confirm {
 		fmt.Println("Job creation cancelled.")
 		return
@@ -3221,18 +3261,18 @@ func createJobsCommand() *cobra.Command {
 			w := new(bytes.Buffer)
 			writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(writer, "ID\tNAME\tSOURCE\tTARGET\tSTATUS\tLAST ACTIVE\tCREATED")
-			
+
 			for _, job := range jobs {
 				createdAt := "N/A"
 				if job["created_at"] != nil {
 					createdAt = job["created_at"].(string)
 				}
-				
+
 				sourceCluster := "N/A"
 				if job["source_cluster_name"] != nil {
 					sourceCluster = job["source_cluster_name"].(string)
 				}
-				
+
 				targetCluster := "N/A"
 				if job["target_cluster_name"] != nil {
 					targetCluster = job["target_cluster_name"].(string)
@@ -3249,7 +3289,7 @@ func createJobsCommand() *cobra.Command {
 						}
 					}
 				}
-				
+
 				fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 					job["id"].(string),
 					job["name"].(string),
@@ -3796,17 +3836,17 @@ func createJobsCommand() *cobra.Command {
 			fmt.Printf("=== Job Status: %s ===\n", job["name"].(string))
 			fmt.Printf("ID: %s\n", job["id"].(string))
 			fmt.Printf("Status: %s\n", job["status"].(string))
-			
+
 			sourceCluster := "N/A"
 			if job["source_cluster_name"] != nil {
 				sourceCluster = job["source_cluster_name"].(string)
 			}
-			
+
 			targetCluster := "N/A"
 			if job["target_cluster_name"] != nil {
 				targetCluster = job["target_cluster_name"].(string)
 			}
-			
+
 			fmt.Printf("Source Cluster: %s\n", sourceCluster)
 			fmt.Printf("Target Cluster: %s\n", targetCluster)
 			fmt.Printf("Created: %s\n", job["created_at"].(string))
@@ -4166,12 +4206,12 @@ func createJobsCommand() *cobra.Command {
 
 func testAIConnection(endpoint, apiKey, model, provider string) bool {
 	fmt.Printf("Sending test prompt to %s...\n", provider)
-	
+
 	testPrompt := "Respond with 'Connection successful' if you can process this message."
-	
+
 	var reqBody []byte
 	var err error
-	
+
 	if provider == "custom" || provider == "openai" {
 		reqBody, err = json.Marshal(map[string]interface{}{
 			"model": model,
@@ -4188,94 +4228,94 @@ func testAIConnection(endpoint, apiKey, model, provider string) bool {
 			"model": model,
 			"messages": []map[string]string{
 				{
-					"role":    "user", 
+					"role":    "user",
 					"content": testPrompt,
 				},
 			},
 			"max_tokens": 50,
 		})
 	}
-	
+
 	if err != nil {
 		fmt.Printf("Error creating request: %v\n", err)
 		return false
 	}
-	
+
 	chatEndpoint := endpoint + "/chat/completions"
 	req, err := http.NewRequest("POST", chatEndpoint, bytes.NewBuffer(reqBody))
 	if err != nil {
 		fmt.Printf("Error creating HTTP request: %v\n", err)
 		return false
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	
+
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Connection failed: %v\n", err)
 		return false
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
 		fmt.Printf("API returned status %d: %s\n", resp.StatusCode, string(body))
 		return false
 	}
-	
+
 	fmt.Println("Connection test successful!")
 	return true
 }
 
 func testCustomAIConnection(endpoint, apiKey, apiSecret string) ([]string, error) {
 	modelsURL := fmt.Sprintf("%s/models", endpoint)
-	
+
 	req, err := http.NewRequest("GET", modelsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
-	
+
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	if apiSecret != "" {
 		req.Header.Set("X-API-Secret", apiSecret)
 		req.Header.Set("X-API-Key", apiKey)
 		req.SetBasicAuth(apiKey, apiSecret)
 	}
-	
+
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("connection failed: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
-	
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %v", err)
 	}
-	
+
 	var modelsResponse struct {
 		Data []struct {
 			ID     string `json:"id"`
 			Object string `json:"object"`
 		} `json:"data"`
 	}
-	
+
 	if err := json.Unmarshal(body, &modelsResponse); err == nil && len(modelsResponse.Data) > 0 {
 		var models []string
 		for _, model := range modelsResponse.Data {
@@ -4285,12 +4325,12 @@ func testCustomAIConnection(endpoint, apiKey, apiSecret string) ([]string, error
 		}
 		return models, nil
 	}
-	
+
 	var modelList []string
 	if err := json.Unmarshal(body, &modelList); err == nil && len(modelList) > 0 {
 		return modelList, nil
 	}
-	
+
 	var modelsWithName []struct {
 		Name  string `json:"name"`
 		Model string `json:"model"`
@@ -4306,7 +4346,7 @@ func testCustomAIConnection(endpoint, apiKey, apiSecret string) ([]string, error
 		}
 		return models, nil
 	}
-	
+
 	return []string{}, nil
 }
 
@@ -4458,7 +4498,7 @@ func manageServerConfiguration() {
 		Message: "Select action:",
 		Options: []string{
 			"Change host",
-			"Change port", 
+			"Change port",
 			"Change mode",
 			"Configure TLS",
 			"Configure CORS",
@@ -4529,10 +4569,10 @@ func manageServerConfiguration() {
 		if corsConfig == nil {
 			corsConfig = make(map[string]interface{})
 		}
-		
+
 		var origins string
 		origins = strings.Join(getConfigValueAsStringArray(corsConfig, "allowed_origins"), ",")
-		
+
 		prompt := &survey.Input{
 			Message: "Enter allowed CORS origins (comma-separated):",
 			Default: origins,
@@ -4583,7 +4623,7 @@ func manageMonitoringConfiguration() {
 	fmt.Println("=== Current Monitoring Configuration ===")
 	fmt.Printf("Enabled: %v\n", getConfigValue(monitoringConfig, "enabled", "false"))
 	fmt.Printf("Platform: %v\n", getConfigValue(monitoringConfig, "platform", "not set"))
-	
+
 	if getConfigValue(monitoringConfig, "enabled", false) == true {
 		platform := getConfigValueAsString(monitoringConfig, "platform")
 		switch platform {
@@ -4762,7 +4802,7 @@ func getConfigValueAsStringArray(config map[string]interface{}, key string) []st
 	if !exists {
 		return []string{}
 	}
-	
+
 	if arr, ok := val.([]interface{}); ok {
 		result := make([]string, len(arr))
 		for i, v := range arr {
@@ -4770,7 +4810,7 @@ func getConfigValueAsStringArray(config map[string]interface{}, key string) []st
 		}
 		return result
 	}
-	
+
 	return []string{fmt.Sprintf("%v", val)}
 }
 
@@ -4804,7 +4844,7 @@ func configureAIProvider(provider string) {
 
 func configureOpenAI() {
 	fmt.Println("Configuring OpenAI settings...")
-	
+
 	var apiKey string
 	promptKey := &survey.Password{
 		Message: "Enter OpenAI API key:",
@@ -4812,7 +4852,7 @@ func configureOpenAI() {
 	survey.AskOne(promptKey, &apiKey)
 	updateConfigParameter("ai.token", apiKey)
 	fmt.Printf("Successfully updated ai.token = %s\n", maskSensitiveValue(apiKey))
-	
+
 	var model string
 	promptModel := &survey.Select{
 		Message: "Select OpenAI model:",
@@ -4821,22 +4861,22 @@ func configureOpenAI() {
 	}
 	survey.AskOne(promptModel, &model)
 	updateConfigParameter("ai.model", model)
-	
+
 	updateConfigParameter("ai.endpoint", "https://api.openai.com/v1")
-	
+
 	fmt.Println("OpenAI configuration completed")
 }
 
 func configureClaude() {
 	fmt.Println("Configuring Anthropic Claude settings...")
-	
+
 	var apiKey string
 	promptKey := &survey.Password{
 		Message: "Enter Anthropic API key:",
 	}
 	survey.AskOne(promptKey, &apiKey)
 	updateConfigParameter("ai.token", apiKey)
-	
+
 	var model string
 	promptModel := &survey.Select{
 		Message: "Select Claude model:",
@@ -4845,22 +4885,22 @@ func configureClaude() {
 	}
 	survey.AskOne(promptModel, &model)
 	updateConfigParameter("ai.model", model)
-	
+
 	updateConfigParameter("ai.endpoint", "https://api.anthropic.com/v1")
-	
+
 	fmt.Println("Claude configuration completed")
 }
 
 func configureGemini() {
 	fmt.Println("Configuring Google Gemini settings...")
-	
+
 	var apiKey string
 	promptKey := &survey.Password{
 		Message: "Enter Google AI API key:",
 	}
 	survey.AskOne(promptKey, &apiKey)
 	updateConfigParameter("ai.token", apiKey)
-	
+
 	var model string
 	promptModel := &survey.Select{
 		Message: "Select Gemini model:",
@@ -4869,22 +4909,22 @@ func configureGemini() {
 	}
 	survey.AskOne(promptModel, &model)
 	updateConfigParameter("ai.model", model)
-	
+
 	updateConfigParameter("ai.endpoint", "https://generativelanguage.googleapis.com/v1")
-	
+
 	fmt.Println("Gemini configuration completed")
 }
 
 func configureGrok() {
 	fmt.Println("Configuring xAI Grok settings...")
-	
+
 	var apiKey string
 	promptKey := &survey.Password{
 		Message: "Enter xAI API key:",
 	}
 	survey.AskOne(promptKey, &apiKey)
 	updateConfigParameter("ai.token", apiKey)
-	
+
 	var model string
 	promptModel := &survey.Select{
 		Message: "Select Grok model:",
@@ -4893,40 +4933,40 @@ func configureGrok() {
 	}
 	survey.AskOne(promptModel, &model)
 	updateConfigParameter("ai.model", model)
-	
+
 	updateConfigParameter("ai.endpoint", "https://api.x.ai/v1")
-	
+
 	fmt.Println("Grok configuration completed")
 }
 
 func configureCustomAI() {
 	fmt.Println("Configuring custom AI provider settings...")
-	
+
 	var endpoint string
 	promptEndpoint := &survey.Input{
 		Message: "Enter custom AI API base URL (without /chat/completions):",
 		Default: "https://connect.scalytics.io/v1",
-		Help: "Examples: https://api.yourprovider.com/v1, https://connect.scalytics.io/v1",
+		Help:    "Examples: https://api.yourprovider.com/v1, https://connect.scalytics.io/v1",
 	}
 	survey.AskOne(promptEndpoint, &endpoint)
-	
+
 	endpoint = strings.TrimSuffix(endpoint, "/")
 	updateConfigParameter("ai.endpoint", endpoint)
-	
+
 	var apiKey string
 	promptKey := &survey.Password{
 		Message: "Enter API key:",
 	}
 	survey.AskOne(promptKey, &apiKey)
 	updateConfigParameter("ai.token", apiKey)
-	
+
 	var needsSecret bool
 	promptSecret := &survey.Confirm{
 		Message: "Does this provider require an API secret (in addition to API key)?",
 		Default: false,
 	}
 	survey.AskOne(promptSecret, &needsSecret)
-	
+
 	var apiSecret string
 	if needsSecret {
 		promptSecretValue := &survey.Password{
@@ -4935,13 +4975,13 @@ func configureCustomAI() {
 		survey.AskOne(promptSecretValue, &apiSecret)
 		updateConfigParameter("ai.api_secret", apiSecret)
 	}
-	
+
 	fmt.Println("Testing connection and discovering available models...")
 	models, err := testCustomAIConnection(endpoint, apiKey, apiSecret)
 	if err != nil {
 		fmt.Printf("Warning: Connection test failed: %v\n", err)
 		fmt.Println("You can still configure manually, but please verify the settings.")
-		
+
 		var model string
 		promptModel := &survey.Input{
 			Message: "Enter model name manually:",
@@ -4951,7 +4991,7 @@ func configureCustomAI() {
 		updateConfigParameter("ai.model", model)
 	} else {
 		fmt.Printf("Connection successful! Found %d available models.\n", len(models))
-		
+
 		if len(models) > 0 {
 			var selectedModel string
 			if len(models) == 1 {
@@ -4976,7 +5016,7 @@ func configureCustomAI() {
 			updateConfigParameter("ai.model", model)
 		}
 	}
-	
+
 	fmt.Println("Custom AI provider configuration completed")
 }
 
@@ -5051,18 +5091,18 @@ func createConfigCommand() *cobra.Command {
 			req.Header.Set("Authorization", "Bearer "+token)
 			client := &http.Client{}
 			resp, err := client.Do(req)
-			
+
 			if err == nil && resp.StatusCode == http.StatusOK {
 				fmt.Println("⚠️  WARNING: Existing configuration found in database!")
 				fmt.Println("This wizard will OVERWRITE the current configuration.")
-				
+
 				var proceed bool
 				prompt := &survey.Confirm{
 					Message: "Do you want to proceed and overwrite existing configuration?",
 					Default: false,
 				}
 				survey.AskOne(prompt, &proceed)
-				
+
 				if !proceed {
 					fmt.Println("Configuration wizard cancelled.")
 					return
@@ -5121,7 +5161,7 @@ func createConfigCommand() *cobra.Command {
 			} else {
 				configFile = "configs/default.yml"
 			}
-			
+
 			configBytes, err = ioutil.ReadFile(configFile)
 			if err != nil {
 				fmt.Printf("Error: Failed to read config file: %v\n", err)
@@ -5140,7 +5180,7 @@ func createConfigCommand() *cobra.Command {
 				fmt.Printf("Error: Failed to marshal current config: %v\n", err)
 				return
 			}
-			
+
 			var currentConfigMap map[string]interface{}
 			json.Unmarshal(currentConfigYAML, &currentConfigMap)
 			backupYAML, err := yaml.Marshal(currentConfigMap)
@@ -5151,7 +5191,7 @@ func createConfigCommand() *cobra.Command {
 
 			timestamp := time.Now().Format("2006-01-02_15-04-05")
 			backupFile := fmt.Sprintf("%s-backup-%s.yml", strings.TrimSuffix(configFile, ".yml"), timestamp)
-			
+
 			if err := ioutil.WriteFile(backupFile, backupYAML, 0644); err != nil {
 				fmt.Printf("Error: Failed to create backup file: %v\n", err)
 				return
@@ -5247,12 +5287,14 @@ func createConfigEditCommand() *cobra.Command {
 	}
 
 	serverCmd := createServerEditCommands()
-	
+
 	monitoringCmd := createMonitoringEditCommands()
-	
+
+	complianceCmd := createComplianceEditCommands()
+
 	aiCmd := createAIEditCommands()
 
-	editCmd.AddCommand(serverCmd, monitoringCmd, aiCmd)
+	editCmd.AddCommand(serverCmd, monitoringCmd, complianceCmd, aiCmd)
 	return editCmd
 }
 
@@ -5341,7 +5383,7 @@ func createServerEditCommands() *cobra.Command {
 				}
 				survey.AskOne(prompt, &enableBool)
 				enabled = fmt.Sprintf("%t", enableBool)
-				
+
 				if enableBool {
 					var certFile string
 					promptCert := &survey.Input{
@@ -5350,7 +5392,7 @@ func createServerEditCommands() *cobra.Command {
 					}
 					survey.AskOne(promptCert, &certFile)
 					updateConfigParameter("server.tls.cert_file", certFile)
-					
+
 					var keyFile string
 					promptKey := &survey.Input{
 						Message: "Enter path to TLS private key file:",
@@ -5533,7 +5575,7 @@ func createMonitoringEditCommands() *cobra.Command {
 	manageCmd := &cobra.Command{
 		Use:   "manage",
 		Short: "Manage monitoring configuration interactively",
-		Long:  "View current monitoring configuration and modify settings interactively", 
+		Long:  "View current monitoring configuration and modify settings interactively",
 		Run: func(cmd *cobra.Command, args []string) {
 			manageMonitoringConfiguration()
 		},
@@ -5541,6 +5583,157 @@ func createMonitoringEditCommands() *cobra.Command {
 
 	monitoringCmd.AddCommand(enabledCmd, platformCmd, manageCmd)
 	return monitoringCmd
+}
+
+// createComplianceEditCommands creates compliance scheduling configuration commands
+func createComplianceEditCommands() *cobra.Command {
+	complianceCmd := &cobra.Command{
+		Use:   "compliance",
+		Short: "Configure compliance reporting schedule",
+		Long:  "Configure automated compliance report scheduling",
+	}
+
+	enabledCmd := &cobra.Command{
+		Use:   "enabled [value]",
+		Short: "Enable or disable compliance scheduling",
+		Args:  cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var enabled string
+			if len(args) > 0 {
+				enabled = args[0]
+			} else {
+				var enabledBool bool
+				prompt := &survey.Confirm{
+					Message: "Enable compliance report scheduling?",
+					Default: true,
+				}
+				survey.AskOne(prompt, &enabledBool)
+				enabled = fmt.Sprintf("%t", enabledBool)
+			}
+			updateConfigParameter("compliance.schedule.enabled", enabled)
+		},
+	}
+
+	runHourCmd := &cobra.Command{
+		Use:   "run-hour [hour]",
+		Short: "Set report run hour (0-23 local time)",
+		Args:  cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var hour string
+			if len(args) > 0 {
+				hour = args[0]
+			} else {
+				prompt := &survey.Input{
+					Message: "Enter report run hour (0-23):",
+					Default: "2",
+				}
+				survey.AskOne(prompt, &hour)
+			}
+			updateConfigParameter("compliance.schedule.run_hour", hour)
+		},
+	}
+
+	dailyCmd := &cobra.Command{
+		Use:   "daily [value]",
+		Short: "Enable or disable daily compliance reports",
+		Args:  cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var enabled string
+			if len(args) > 0 {
+				enabled = args[0]
+			} else {
+				var enabledBool bool
+				prompt := &survey.Confirm{
+					Message: "Generate daily compliance reports?",
+					Default: true,
+				}
+				survey.AskOne(prompt, &enabledBool)
+				enabled = fmt.Sprintf("%t", enabledBool)
+			}
+			updateConfigParameter("compliance.schedule.daily", enabled)
+		},
+	}
+
+	weeklyCmd := &cobra.Command{
+		Use:   "weekly [value]",
+		Short: "Enable or disable weekly compliance reports (Monday)",
+		Args:  cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var enabled string
+			if len(args) > 0 {
+				enabled = args[0]
+			} else {
+				var enabledBool bool
+				prompt := &survey.Confirm{
+					Message: "Generate weekly compliance reports? (Monday)",
+					Default: false,
+				}
+				survey.AskOne(prompt, &enabledBool)
+				enabled = fmt.Sprintf("%t", enabledBool)
+			}
+			updateConfigParameter("compliance.schedule.weekly", enabled)
+		},
+	}
+
+	monthlyCmd := &cobra.Command{
+		Use:   "monthly [value]",
+		Short: "Enable or disable monthly compliance reports (1st of month)",
+		Args:  cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var enabled string
+			if len(args) > 0 {
+				enabled = args[0]
+			} else {
+				var enabledBool bool
+				prompt := &survey.Confirm{
+					Message: "Generate monthly compliance reports? (1st of month)",
+					Default: false,
+				}
+				survey.AskOne(prompt, &enabledBool)
+				enabled = fmt.Sprintf("%t", enabledBool)
+			}
+			updateConfigParameter("compliance.schedule.monthly", enabled)
+		},
+	}
+
+	manageCmd := &cobra.Command{
+		Use:   "manage",
+		Short: "Manage compliance scheduling interactively",
+		Run: func(cmd *cobra.Command, args []string) {
+			token, err := LoadToken()
+			if err != nil {
+				fmt.Println("Error: You must be logged in to perform this action. Please run 'mirror-cli login'.")
+				return
+			}
+
+			cfg, err := fetchCurrentConfig(token)
+			if err != nil {
+				fmt.Printf("Error: Failed to fetch config: %v\n", err)
+				return
+			}
+
+			complianceCfg, ok := cfg["compliance"].(map[string]interface{})
+			if !ok {
+				complianceCfg = map[string]interface{}{}
+			}
+			scheduleCfg, ok := complianceCfg["schedule"].(map[string]interface{})
+			if !ok {
+				scheduleCfg = map[string]interface{}{}
+			}
+
+			fmt.Println("Current compliance schedule:")
+			fmt.Printf("  Enabled: %v\n", getConfigValue(scheduleCfg, "enabled", "false"))
+			fmt.Printf("  Run Hour: %v\n", getConfigValue(scheduleCfg, "run_hour", "2"))
+			fmt.Printf("  Daily: %v\n", getConfigValue(scheduleCfg, "daily", "true"))
+			fmt.Printf("  Weekly: %v\n", getConfigValue(scheduleCfg, "weekly", "false"))
+			fmt.Printf("  Monthly: %v\n", getConfigValue(scheduleCfg, "monthly", "false"))
+
+			fmt.Println("\nUse subcommands to update specific values.")
+		},
+	}
+
+	complianceCmd.AddCommand(enabledCmd, runHourCmd, dailyCmd, weeklyCmd, monthlyCmd, manageCmd)
+	return complianceCmd
 }
 
 // createAIEditCommands creates AI configuration commands
@@ -5569,10 +5762,10 @@ func createAIEditCommands() *cobra.Command {
 				}
 				survey.AskOne(prompt, &provider)
 			}
-			
+
 			// Update provider first
 			updateConfigParameter("ai.provider", provider)
-			
+
 			// Configure provider-specific settings
 			configureAIProvider(provider)
 		},
@@ -5738,7 +5931,7 @@ func createAIEditCommands() *cobra.Command {
 
 			if provider == "" || endpoint == "" || token_val == "" || model == "" {
 				fmt.Println("Error: AI configuration incomplete. Please configure provider, endpoint, token, and model first.")
-				fmt.Printf("Current values - Provider: %s, Endpoint: %s, Model: %s, Token: %s\n", 
+				fmt.Printf("Current values - Provider: %s, Endpoint: %s, Model: %s, Token: %s\n",
 					provider, endpoint, model, maskSensitiveValue(token_val))
 				return
 			}
@@ -5747,14 +5940,14 @@ func createAIEditCommands() *cobra.Command {
 
 			// Test AI connection with a simple prompt
 			success := testAIConnection(endpoint, token_val, model, provider)
-			
+
 			if success {
 				fmt.Println("AI connection successful! Auto-enabling all AI features...")
-				
+
 				updateConfigParameter("AI.Features.AnomalyDetection", "true")
 				updateConfigParameter("AI.Features.PerformanceOptimization", "true")
 				updateConfigParameter("AI.Features.IncidentAnalysis", "true")
-				
+
 				fmt.Println("All AI features have been enabled successfully!")
 				fmt.Println("")
 				fmt.Println("=================================================================")
@@ -5872,7 +6065,7 @@ func updateConfigParameter(path, value string) {
 			fmt.Printf("Error: Failed to read current config: %v\n", err)
 			return
 		}
-		
+
 		if err := json.Unmarshal(body, &currentConfig); err != nil {
 			fmt.Printf("Error: Failed to parse current config: %v\n", err)
 			return
@@ -5884,17 +6077,17 @@ func updateConfigParameter(path, value string) {
 	// Update the specific parameter using map navigation
 	parts := strings.Split(path, ".")
 	current := currentConfig
-	
+
 	for i := 0; i < len(parts)-1; i++ {
 		if _, exists := current[parts[i]]; !exists {
 			current[parts[i]] = make(map[string]interface{})
 		}
 		current = current[parts[i]].(map[string]interface{})
 	}
-	
+
 	// Convert value to appropriate type
 	finalKey := parts[len(parts)-1]
-	
+
 	switch {
 	case value == "true":
 		current[finalKey] = true
@@ -5948,11 +6141,11 @@ func updateConfigParameter(path, value string) {
 func shouldConvertToInt(path string) bool {
 	integerFields := []string{
 		"server.port",
-		"replication.batch_size", 
+		"replication.batch_size",
 		"replication.parallelism",
 		"monitoring.retention_days",
 	}
-	
+
 	for _, field := range integerFields {
 		if path == field {
 			return true
@@ -6144,10 +6337,10 @@ echo "   3. Configure CLI client certificates: mirror-cli tls configure-client"
 			}
 
 			tlsConfig := map[string]string{
-				"server_url":    serverURL,
-				"ca_cert":       filepath.Join(certDir, "ca.pem"),
-				"client_cert":   filepath.Join(certDir, "client-cert.pem"),
-				"client_key":    filepath.Join(certDir, "client-key.pem"),
+				"server_url":  serverURL,
+				"ca_cert":     filepath.Join(certDir, "ca.pem"),
+				"client_cert": filepath.Join(certDir, "client-cert.pem"),
+				"client_key":  filepath.Join(certDir, "client-key.pem"),
 			}
 
 			configBytes, err := yaml.Marshal(tlsConfig)
@@ -6360,7 +6553,7 @@ echo "   3. Configure CLI client certificates: mirror-cli tls configure-client"
 func formatLastActive(t time.Time) string {
 	now := time.Now()
 	duration := now.Sub(t)
-	
+
 	if duration < time.Minute {
 		return "Just now"
 	} else if duration < time.Hour {
@@ -6427,7 +6620,6 @@ echo "Certificate and private key validation successful"
 
 	return nil
 }
-
 
 func fetchCluster(token, clusterName string) (map[string]interface{}, error) {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/v1/clusters/%s", BackendURL, clusterName), nil)

@@ -31,6 +31,7 @@ type Config struct {
 	Topics      []TopicMapping           `mapstructure:"topic_mappings"`
 	AI          AIConfig                 `mapstructure:"ai"`
 	Monitoring  MonitoringConfig         `mapstructure:"monitoring"`
+	Compliance  ComplianceConfig         `mapstructure:"compliance"`
 }
 
 // ServerConfig defines server settings
@@ -128,6 +129,14 @@ func (c *Config) Validate() error {
 	if c.Database.RetentionDays > 30 {
 		return fmt.Errorf("database retention_days must be between 1 and 30")
 	}
+	if c.Compliance.Schedule.RunHour < 0 || c.Compliance.Schedule.RunHour > 23 {
+		return fmt.Errorf("compliance schedule run_hour must be between 0 and 23")
+	}
+	if c.Compliance.Schedule.Enabled {
+		if !c.Compliance.Schedule.Daily && !c.Compliance.Schedule.Weekly && !c.Compliance.Schedule.Monthly {
+			return fmt.Errorf("compliance schedule must enable at least one period")
+		}
+	}
 	return nil
 }
 
@@ -151,6 +160,20 @@ type MonitoringConfig struct {
 	Splunk     SplunkConfig     `mapstructure:"splunk"`
 	Loki       LokiConfig       `mapstructure:"loki"`
 	Prometheus PrometheusConfig `mapstructure:"prometheus"`
+}
+
+// ComplianceConfig defines compliance reporting schedule settings
+type ComplianceConfig struct {
+	Schedule ComplianceSchedule `mapstructure:"schedule"`
+}
+
+// ComplianceSchedule controls automated report generation
+type ComplianceSchedule struct {
+	Enabled bool `mapstructure:"enabled"`
+	RunHour int  `mapstructure:"run_hour"` // 0-23 local time
+	Daily   bool `mapstructure:"daily"`
+	Weekly  bool `mapstructure:"weekly"`
+	Monthly bool `mapstructure:"monthly"`
 }
 
 // SplunkConfig defines Splunk-specific settings
@@ -206,6 +229,7 @@ func LoadConfig() (*Config, error) {
 	if AppConfig.Database.RetentionDays > 30 {
 		AppConfig.Database.RetentionDays = 30
 	}
+	applyComplianceDefaults(&AppConfig)
 
 	// Dynamically set log file path with date if not already set
 	if !strings.Contains(AppConfig.Logging.File, "20") { // Basic check for a date
@@ -216,4 +240,16 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &AppConfig, nil
+}
+
+func applyComplianceDefaults(cfg *Config) {
+	if cfg.Compliance.Schedule.RunHour < 0 || cfg.Compliance.Schedule.RunHour > 23 {
+		cfg.Compliance.Schedule.RunHour = 2
+	}
+	if !cfg.Compliance.Schedule.Enabled {
+		return
+	}
+	if !cfg.Compliance.Schedule.Daily && !cfg.Compliance.Schedule.Weekly && !cfg.Compliance.Schedule.Monthly {
+		cfg.Compliance.Schedule.Daily = true
+	}
 }
