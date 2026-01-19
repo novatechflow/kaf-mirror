@@ -137,7 +137,7 @@ This will authenticate with the API and store a session token securely on your l
 - `./mirror-cli users list`: Lists all users. Requires `users:list` permission.
 - `./mirror-cli users add`: Adds a new user with interactive prompts and generated password. Requires `users:create` permission. Operators can only create users with the `monitoring` role.
 - `./mirror-cli users set-role <username> <role>`: Sets a user's role. Requires `users:assign-roles` permission. Users cannot change their own role.
-- `./mirror-cli users reset-password [username]`: Reset another user's password and generate a new secure password. **Admin only**. Cannot reset own password.
+- `./mirror-cli users reset-password [username]`: Reset another user's password and generate a new secure password. **Admin only**. Cannot reset own password. The new password is written to a file (temp by default or `--password-file`).
 - `./mirror-cli users delete <username>`: Delete a user account. Requires `users:delete` permission.
 - `./mirror-cli whoami`: Displays information about the current user.
 - `./mirror-cli change-password`: Changes the current user's password.

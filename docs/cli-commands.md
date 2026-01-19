@@ -972,7 +972,13 @@ This command allows admins to reset any user's password and generates a new rand
 ### Usage
 
 ```
-mirror-cli users reset-password [username]
+mirror-cli users reset-password [username] [flags]
+```
+
+### Options
+
+```
+  -, --password-file string   Write new password to file instead of stdout
 ```
 
 #### mirror-cli users reset-token
