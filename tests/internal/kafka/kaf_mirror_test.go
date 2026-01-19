@@ -23,7 +23,8 @@ import (
 )
 
 type fakeAdmin struct {
-	info *kafka.ClusterInfo
+	info        *kafka.ClusterInfo
+	ensureCalls []string
 }
 
 func (f *fakeAdmin) GetClusterInfo(ctx context.Context) (*kafka.ClusterInfo, error) {
@@ -39,6 +40,17 @@ func (f *fakeAdmin) GetTopicHighWaterMarks(ctx context.Context, topics []string)
 }
 
 func (f *fakeAdmin) EnsureTopicExists(ctx context.Context, topicName string, partitions int32, replicationFactor int16) error {
+	f.ensureCalls = append(f.ensureCalls, topicName)
+	if f.info.Topics == nil {
+		f.info.Topics = map[string]kafka.TopicInfo{}
+	}
+	if _, exists := f.info.Topics[topicName]; !exists {
+		f.info.Topics[topicName] = kafka.TopicInfo{
+			Name:              topicName,
+			Partitions:        partitions,
+			ReplicationFactor: replicationFactor,
+		}
+	}
 	return nil
 }
 
@@ -158,4 +170,30 @@ func TestHandleRecord_LeavesPartitionUnsetWhenUnknown(t *testing.T) {
 
 	assert.NotNil(t, producedRecord)
 	assert.Equal(t, int32(0), producedRecord.Partition)
+}
+
+func TestValidateAndSyncClusters_EnsuresTargetTopics(t *testing.T) {
+	admin := &fakeAdmin{
+		info: &kafka.ClusterInfo{
+			Topics: map[string]kafka.TopicInfo{
+				"source-a": {Name: "source-a", Partitions: 3, ReplicationFactor: 1},
+			},
+		},
+	}
+	restore := kafka.SetAdminClientFactoryForTest(func(cfg config.ClusterConfig) (kafka.AdminClientAPI, error) {
+		return admin, nil
+	})
+	t.Cleanup(restore)
+
+	cfg := &config.Config{
+		Clusters: map[string]config.ClusterConfig{
+			"source": {Brokers: "localhost:9092"},
+			"target": {Brokers: "localhost:9093"},
+		},
+		Replication: config.ReplicationConfig{JobID: "test-job"},
+	}
+
+	_, err := kafka.ValidateAndSyncClustersForTest(cfg, []string{"source-a"}, map[string]string{"source-a": "target-a"})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"target-a"}, admin.ensureCalls)
 }

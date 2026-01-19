@@ -914,3 +914,8 @@ func NewKafMirrorImplForTest(producer *Producer, topicMap map[string]string, tar
 		incidentStates:   make(map[string]bool),
 	}
 }
+
+// ValidateAndSyncClustersForTest exposes cluster validation for unit tests.
+func ValidateAndSyncClustersForTest(cfg *config.Config, topics []string, topicMap map[string]string) (map[string]int32, error) {
+	return validateAndSyncClusters(cfg, topics, topicMap)
+}

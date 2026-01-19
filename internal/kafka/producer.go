@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package kafka
 
 import (
@@ -35,22 +34,21 @@ type ProducerMetrics struct {
 }
 
 type Producer struct {
-	Client              KgoClient
-	recordsProduced     int64
-	bytesProduced       int64
-	errorCount          int64
-	consecutiveErrors   int64
-	jobID               string
+	Client            KgoClient
+	recordsProduced   int64
+	bytesProduced     int64
+	errorCount        int64
+	consecutiveErrors int64
+	jobID             string
 }
 
 func NewProducer(cfg config.ClusterConfig, replicationCfg config.ReplicationConfig, jobID string) (*Producer, error) {
 	logger.Info("Creating new Kafka producer: provider=%s, brokers=%s, job=%s, component=%s", cfg.Provider, cfg.Brokers, jobID, "producer")
 	logger.Debug("Producer configuration: batch_size=%dKB, compression=%s, job=%s, component=%s",
 		replicationCfg.BatchSize, replicationCfg.Compression, jobID, "producer")
-	
+
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(strings.Split(cfg.Brokers, ",")...),
-		kgo.AllowAutoTopicCreation(),
 		kgo.ProducerBatchMaxBytes(int32(replicationCfg.BatchSize * 1024)),
 		kgo.ProducerBatchCompression(getCompressionCodec(replicationCfg.Compression)),
 	}
@@ -89,7 +87,7 @@ func NewProducer(cfg config.ClusterConfig, replicationCfg config.ReplicationConf
 			if cfg.Security.Username == "" || cfg.Security.Password == "" {
 				return nil, fmt.Errorf("username and password are required for SCRAM authentication")
 			}
-			logger.Debug("Producer: Using SCRAM authentication: mechanism=%s, username=%s", 
+			logger.Debug("Producer: Using SCRAM authentication: mechanism=%s, username=%s",
 				cfg.Security.SASLMechanism, cfg.Security.Username)
 			auth := scram.Auth{
 				User: cfg.Security.Username,
@@ -118,7 +116,7 @@ func NewProducer(cfg config.ClusterConfig, replicationCfg config.ReplicationConf
 			User: cfg.Security.APIKey,
 			Pass: cfg.Security.APISecret,
 		}.AsMechanism()))
-	
+
 	case "redpanda":
 		logger.Info("Producer: Configuring RedPanda connection")
 		// RedPanda Cloud typically uses TLS + SASL SCRAM
@@ -130,12 +128,12 @@ func NewProducer(cfg config.ClusterConfig, replicationCfg config.ReplicationConf
 				Pass: cfg.Security.Password,
 			}.AsSha256Mechanism()))
 		}
-	
+
 	case "plain":
 		logger.Info("Producer: Using plain Kafka configuration")
 		// Plain Kafka uses the existing security configuration logic above
 		// No additional provider-specific setup needed
-	
+
 	default:
 		// For unknown providers, log a warning but continue with generic setup
 		if cfg.Provider != "" {
