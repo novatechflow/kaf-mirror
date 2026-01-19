@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package database
 
 import (
@@ -72,6 +71,7 @@ func SeedDefaultRolesAndPermissions(db *sqlx.DB) error {
 		"jobs:create", "jobs:delete", "jobs:edit",
 		"clusters:view", "clusters:create", "clusters:edit", "clusters:delete",
 		"metrics:view", "ai:insights:view", "ai:analysis:trigger",
+		"events:view",
 		"users:create", "users:delete", "users:list", "users:assign-roles",
 		"roles:manage", "config:view", "config:edit",
 		"compliance:generate", "compliance:view",
@@ -79,15 +79,15 @@ func SeedDefaultRolesAndPermissions(db *sqlx.DB) error {
 	}
 
 	rolePermissions := map[string][]string{
-		"admin":      permissions,
+		"admin": permissions,
 		"operator": {
 			"jobs:view", "jobs:start", "jobs:stop", "jobs:pause", "jobs:edit",
 			"clusters:view", "clusters:edit",
-			"metrics:view", "ai:insights:view", "ai:analysis:trigger",
+			"metrics:view", "ai:insights:view", "ai:analysis:trigger", "events:view",
 			"inventory:view", "inventory:create",
 		},
-		"monitoring": {"jobs:view", "clusters:view", "metrics:view", "ai:insights:view", "inventory:view"},
-		"compliance": {"jobs:view", "clusters:view", "metrics:view", "compliance:generate", "compliance:view", "inventory:view"},
+		"monitoring": {"jobs:view", "clusters:view", "metrics:view", "ai:insights:view", "inventory:view", "events:view"},
+		"compliance": {"jobs:view", "clusters:view", "metrics:view", "compliance:generate", "compliance:view", "inventory:view", "events:view"},
 	}
 
 	tx, err := db.Beginx()

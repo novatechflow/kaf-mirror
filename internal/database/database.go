@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package database
 
 import (
@@ -174,6 +173,12 @@ func RunMigrations(db *sqlx.DB) error {
 		return err
 	}
 
+	// Migration 10: Add events view permission
+	err = addEventsViewPermission(db)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -206,6 +211,39 @@ func addMirrorProgressHistoryTable(db *sqlx.DB) error {
 			FOREIGN KEY (job_id) REFERENCES replication_jobs(id) ON DELETE CASCADE
 		);`)
 		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func addEventsViewPermission(db *sqlx.DB) error {
+	var permissionExists int
+	err := db.Get(&permissionExists, "SELECT COUNT(*) FROM permissions WHERE name='events:view'")
+	if err != nil {
+		return err
+	}
+	if permissionExists > 0 {
+		return nil
+	}
+
+	_, err = db.Exec("INSERT INTO permissions (name) VALUES ('events:view')")
+	if err != nil {
+		return err
+	}
+
+	roleNames := []string{"admin", "operator", "monitoring", "compliance"}
+	for _, role := range roleNames {
+		var roleID int
+		if err := db.Get(&roleID, "SELECT id FROM roles WHERE name = ?", role); err != nil {
+			continue
+		}
+		var permID int
+		if err := db.Get(&permID, "SELECT id FROM permissions WHERE name='events:view'"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)", roleID, permID); err != nil {
 			return err
 		}
 	}
@@ -462,13 +500,13 @@ func addMirrorStatePermissions(db *sqlx.DB) error {
 		// Get role IDs (gracefully handle missing roles)
 		var monitoringRoleID, operatorRoleID, adminRoleID int
 		var hasMonitoring, hasOperator, hasAdmin bool
-		
+
 		err = db.Get(&monitoringRoleID, "SELECT id FROM roles WHERE name='monitoring'")
 		hasMonitoring = (err == nil)
-		
+
 		err = db.Get(&operatorRoleID, "SELECT id FROM roles WHERE name='operator'")
 		hasOperator = (err == nil)
-		
+
 		err = db.Get(&adminRoleID, "SELECT id FROM roles WHERE name='admin'")
 		hasAdmin = (err == nil)
 

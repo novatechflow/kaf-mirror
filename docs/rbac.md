@@ -10,6 +10,12 @@ This document outlines the access levels for each API endpoint based on user rol
 | `GET /api/v1/version` | `any` |
 | `POST /auth/token` | `any` |
 
+## Auth
+
+| Endpoint | Role |
+|---|---|
+| `GET /auth/me` | `any` |
+
 ## Configuration
 
 | Endpoint | Role |
@@ -68,14 +74,15 @@ This document outlines the access levels for each API endpoint based on user rol
 
 | Endpoint | Role |
 |---|---|
-| `GET /api/v1/topics/source` | `any` |
-| `GET /api/v1/topics/target` | `any` |
+| `GET /api/v1/topics/source` | `admin`, `operator`, `monitoring`, `compliance` |
+| `GET /api/v1/topics/target` | `admin`, `operator`, `monitoring`, `compliance` |
 
 ## AI Insights
 
 | Endpoint | Role |
 |---|---|
 | `GET /api/v1/ai/insights` | `admin`, `operator`, `monitoring` |
+| `GET /api/v1/ai/metrics` | `admin`, `operator`, `monitoring` |
 | `POST /api/v1/ai/test` | `admin`, `operator` |
 | `GET /api/v1/ai/anomalies` | `admin`, `operator`, `monitoring` |
 | `GET /api/v1/ai/recommendations` | `admin`, `operator`, `monitoring` |
@@ -127,3 +134,9 @@ This document outlines the access levels for each API endpoint based on user rol
 | `POST /api/v1/compliance/report/:period` | `admin`, `compliance` |
 | `GET /api/v1/compliance/reports` | `admin`, `compliance` |
 | `GET /api/v1/compliance/report/:id` | `admin`, `compliance` |
+
+## Events
+
+| Endpoint | Role |
+|---|---|
+| `GET /api/v1/events` | `admin`, `operator`, `monitoring`, `compliance` |

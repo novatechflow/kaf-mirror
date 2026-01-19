@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package server
 
 import (
@@ -71,8 +70,8 @@ func (s *Server) setupRoutes() {
 	jobsGroup.Get("/:id/lag", middleware.PermissionRequired(s.Db, "metrics:view"), s.handleGetLag)
 	jobsGroup.Get("/:id/topic-health", middleware.PermissionRequired(s.Db, "jobs:view"), s.handleGetJobTopicHealth)
 
-	api.Get("/topics/source", s.handleListSourceTopics)
-	api.Get("/topics/target", s.handleListTargetTopics)
+	api.Get("/topics/source", middleware.PermissionRequired(s.Db, "clusters:view"), s.handleListSourceTopics)
+	api.Get("/topics/target", middleware.PermissionRequired(s.Db, "clusters:view"), s.handleListTargetTopics)
 
 	aiGroup := api.Group("/ai")
 	aiGroup.Get("/insights", middleware.PermissionRequired(s.Db, "ai:insights:view"), s.handleGetAIInsights)
@@ -109,7 +108,7 @@ func (s *Server) setupRoutes() {
 		mirrorGroup.Post("/checkpoint", middleware.PermissionRequired(s.Db, "jobs:edit"), s.handleCreateMigrationCheckpoint)
 	}
 
-	api.Get("/events", s.handleGetOperationalEvents)
+	api.Get("/events", middleware.PermissionRequired(s.Db, "events:view"), s.handleGetOperationalEvents)
 
 	usersGroup := api.Group("/users")
 	usersGroup.Get("/", middleware.PermissionRequired(s.Db, "users:list"), s.handleListUsers)
@@ -127,7 +126,7 @@ func (s *Server) setupRoutes() {
 	// Dashboard routes - HTML files served without auth (JS handles redirect)
 	s.App.Get("/", s.handleDashboard)
 	s.App.Get("/login", s.handleLoginPage)
-	
+
 	// Static assets (CSS, JS, images) - no auth required
 	webPath := s.getWebPath()
 	s.App.Static("/assets", webPath+"/assets")
