@@ -2571,9 +2571,22 @@ func generateConsolidatedDocs(cmd *cobra.Command, w *os.File) error {
 	}
 
 	// Global flags
-	if cmd.HasAvailableFlags() {
+	if cmd.HasAvailableFlags() || cmd.HasAvailablePersistentFlags() {
 		fmt.Fprintf(w, "## Global Options\n\n")
 		fmt.Fprintf(w, "```\n")
+		cmd.InheritedFlags().VisitAll(func(flag *pflag.Flag) {
+			if !flag.Hidden {
+				fmt.Fprintf(w, "  -%s, --%s", flag.Shorthand, flag.Name)
+				if flag.Value.Type() != "bool" {
+					fmt.Fprintf(w, " %s", flag.Value.Type())
+				}
+				fmt.Fprintf(w, "   %s", flag.Usage)
+				if flag.DefValue != "" && flag.DefValue != "false" {
+					fmt.Fprintf(w, " (default %q)", flag.DefValue)
+				}
+				fmt.Fprintf(w, "\n")
+			}
+		})
 		cmd.Flags().VisitAll(func(flag *pflag.Flag) {
 			if !flag.Hidden {
 				fmt.Fprintf(w, "  -%s, --%s", flag.Shorthand, flag.Name)

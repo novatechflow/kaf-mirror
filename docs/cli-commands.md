@@ -10,7 +10,8 @@ It interacts with the kaf-mirror API to perform various tasks.
 ## Global Options
 
 ```
-  -v, --version   Print the version and exit
+  -, --mirror-url string   URL of the kaf-mirror backend. (default "http://localhost:8080")
+  -v, --version            Print the version and exit
 ```
 
 ## Available Commands

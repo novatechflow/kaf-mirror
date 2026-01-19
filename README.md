@@ -105,14 +105,14 @@ This will authenticate with the API and store a session token securely on your l
 **Configuration Management**
 
 - `./mirror-cli config get`: Get the current configuration from the server.
-- `./mirror-cli config set [config-file]`: Set the configuration on the server.
-- `./mirror-cli config configure`: Create or update the configuration file using an interactive wizard. (Requires admin role)
-- `./mirror-cli config edit`: Edit the configuration file in your default editor. (Requires admin role)
+- `./mirror-cli config save [file]`: Save a configuration file to the server. (Requires admin role)
+- `./mirror-cli config system`: Run the initial interactive configuration wizard. (Requires admin role)
+- `./mirror-cli config edit`: Edit configuration sections interactively. (Requires admin role)
 
 **Cluster Management**
 
 - `./mirror-cli clusters list`: Lists all configured Kafka clusters.
-- `./mirror-cli clusters add --name <cluster-name> --brokers <broker-list>`: Adds a new Kafka cluster.
+- `./mirror-cli clusters add`: Adds a new Kafka cluster with interactive prompts.
 - `./mirror-cli clusters remove <cluster-name>`: Marks a cluster as inactive. (Requires admin role)
 - `./mirror-cli clusters purge`: Purges all archived clusters. (Requires admin role)
 
@@ -129,12 +129,13 @@ This will authenticate with the API and store a session token securely on your l
 - `./mirror-cli jobs stop [job-id]`: Stop running replication jobs with interactive selection.
 - `./mirror-cli jobs pause [job-id]`: Pause running replication jobs (resumable) with interactive selection.
 - `./mirror-cli jobs delete [job-id]`: Delete replication jobs with confirmation (admin only).
-- `./mirror-cli jobs status [job-id]`: Show detailed job status and performance metrics.
+- `./mirror-cli jobs status metrics [job-id]`: Show detailed job status and metrics.
+- `./mirror-cli jobs status full [job-id]`: Show full mirror state (progress, gaps, resume points).
 
 **User Management**
 
 - `./mirror-cli users list`: Lists all users. Requires `users:list` permission.
-- `./mirror-cli users add <username> --password <password> --role <role>`: Adds a new user. Requires `users:create` permission. Operators can only create users with the `monitoring` role.
+- `./mirror-cli users add`: Adds a new user with interactive prompts and generated password. Requires `users:create` permission. Operators can only create users with the `monitoring` role.
 - `./mirror-cli users set-role <username> <role>`: Sets a user's role. Requires `users:assign-roles` permission. Users cannot change their own role.
 - `./mirror-cli users reset-password [username]`: Reset another user's password and generate a new secure password. **Admin only**. Cannot reset own password.
 - `./mirror-cli users delete <username>`: Delete a user account. Requires `users:delete` permission.
@@ -166,8 +167,8 @@ TLS features include:
 
 The system supports multiple AI providers for operational intelligence:
 
-- `./bin/mirror-cli config edit ai provider`: Configure AI provider (OpenAI, Claude, Gemini, Grok, Custom)
-- `./bin/mirror-cli config edit ai model`: Set AI model for selected provider
+- `./mirror-cli config edit ai provider`: Configure AI provider (OpenAI, Claude, Gemini, Grok, Custom)
+- `./mirror-cli config edit ai model`: Set AI model for selected provider
 - Provider-specific configuration with API endpoints and credentials
 
 Supported AI Providers:
