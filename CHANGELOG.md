@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here.
 
+## [1.2.0] - 2026-01-19
+### Highlights
+- Mirror-first topic handling: same-name mirroring by default, regex capture substitution when configured.
+- Dynamic regex topic discovery with target topic creation and partition/replication alignment.
+- Metrics and incidents now distinguish consumed vs produced throughput and source vs target stalls.
+- Compliance report scheduling and multi-provider AI routing improvements.
+
+### Fixes & stability
+- UI logout now clears session tokens; `/login.html` is served directly.
+- Password reset no longer prints secrets to stdout; it writes to a file instead.
+- Lag calculation includes partitions with no consumed records.
+
+### Configuration
+- New `replication.topic_discovery_interval` (default `5m`, `0` to disable).
+- Database retention is configurable via `database.retention_days` (1–30).
+
+### Upgrade notes
+- Review the new password reset behavior (`mirror-cli users reset-password --password-file`).
+- If you rely on regex mappings, prefer capture substitution (e.g., `orders-(.*)` -> `backup-$1`).
+
 ## [1.1.3] - 2025-11-26
 ### Highlights
 - First open-source release of `kaf-mirror`; source code, binaries, and container images are now published under the project license.
