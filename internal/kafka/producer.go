@@ -52,6 +52,7 @@ func NewProducer(cfg config.ClusterConfig, replicationCfg config.ReplicationConf
 		kgo.ProducerBatchMaxBytes(int32(replicationCfg.BatchSize * 1024)),
 		kgo.ProducerBatchCompression(getCompressionCodec(replicationCfg.Compression)),
 	}
+	logger.Info("Producer: Using idempotent writes (franz-go default)")
 
 	if strings.Contains(strings.ToUpper(cfg.Security.Protocol), "SSL") {
 		logger.Info("Producer: Enabling TLS connection")
