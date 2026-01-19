@@ -181,7 +181,7 @@ AI Features:
 - Automatic provider endpoint configuration
 - Secure API key management
 - Model selection with provider-specific options
-- Custom provider support for enterprise deployments
+- Custom provider support for enterprise deployments (OpenAI-compatible proxies should use `custom`)
 - API secret support for providers requiring dual authentication
 
 **Compliance Reporting**

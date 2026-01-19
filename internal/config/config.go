@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package config
 
 import (
@@ -24,14 +23,14 @@ import (
 
 // Config holds the entire application configuration
 type Config struct {
-	Server      ServerConfig                `mapstructure:"server"`
-	Database    DatabaseConfig              `mapstructure:"database"`
-	Logging     LoggingConfig               `mapstructure:"logging"`
-	Clusters    map[string]ClusterConfig    `mapstructure:"clusters"`
-	Replication ReplicationConfig           `mapstructure:"replication"`
-	Topics      []TopicMapping              `mapstructure:"topic_mappings"`
-	AI          AIConfig                    `mapstructure:"ai"`
-	Monitoring  MonitoringConfig            `mapstructure:"monitoring"`
+	Server      ServerConfig             `mapstructure:"server"`
+	Database    DatabaseConfig           `mapstructure:"database"`
+	Logging     LoggingConfig            `mapstructure:"logging"`
+	Clusters    map[string]ClusterConfig `mapstructure:"clusters"`
+	Replication ReplicationConfig        `mapstructure:"replication"`
+	Topics      []TopicMapping           `mapstructure:"topic_mappings"`
+	AI          AIConfig                 `mapstructure:"ai"`
+	Monitoring  MonitoringConfig         `mapstructure:"monitoring"`
 }
 
 // ServerConfig defines server settings
@@ -58,12 +57,12 @@ type DatabaseConfig struct {
 }
 
 type LoggingConfig struct {
-	Level       string `mapstructure:"level"`
-	File        string `mapstructure:"file"`
-	MaxSize     int    `mapstructure:"max_size"`
-	MaxBackups  int    `mapstructure:"max_backups"`
-	MaxAge      int    `mapstructure:"max_age"`
-	Console     bool   `mapstructure:"console"`
+	Level      string `mapstructure:"level"`
+	File       string `mapstructure:"file"`
+	MaxSize    int    `mapstructure:"max_size"`
+	MaxBackups int    `mapstructure:"max_backups"`
+	MaxAge     int    `mapstructure:"max_age"`
+	Console    bool   `mapstructure:"console"`
 }
 
 // ClusterConfig defines Kafka cluster connection details
@@ -76,13 +75,13 @@ type ClusterConfig struct {
 
 // SecurityConfig defines security settings for Kafka connections
 type SecurityConfig struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	Protocol      string `mapstructure:"protocol"`
-	SASLMechanism string `mapstructure:"sasl_mechanism"`
-	Username      string `mapstructure:"username"`
-	Password      string `mapstructure:"password"`
-	APIKey           string `mapstructure:"api_key"`
-	APISecret        string `mapstructure:"api_secret"`
+	Enabled          bool    `mapstructure:"enabled"`
+	Protocol         string  `mapstructure:"protocol"`
+	SASLMechanism    string  `mapstructure:"sasl_mechanism"`
+	Username         string  `mapstructure:"username"`
+	Password         string  `mapstructure:"password"`
+	APIKey           string  `mapstructure:"api_key"`
+	APISecret        string  `mapstructure:"api_secret"`
 	ConnectionString *string `mapstructure:"connection_string"`
 	Kerberos         struct {
 		ServiceName string `mapstructure:"service_name"`
@@ -106,11 +105,12 @@ type TopicMapping struct {
 
 // AIConfig defines AI provider settings
 type AIConfig struct {
-	Provider    string        `mapstructure:"provider"`
-	Endpoint    string        `mapstructure:"endpoint"`
-	Token       string        `mapstructure:"token"`
-	Model       string        `mapstructure:"model"`
-	Features    AIFeatures    `mapstructure:"features"`
+	Provider    string      `mapstructure:"provider"`
+	Endpoint    string      `mapstructure:"endpoint"`
+	Token       string      `mapstructure:"token"`
+	APISecret   string      `mapstructure:"api_secret"`
+	Model       string      `mapstructure:"model"`
+	Features    AIFeatures  `mapstructure:"features"`
 	SelfHealing SelfHealing `mapstructure:"self_healing"`
 }
 
@@ -133,9 +133,9 @@ func (c *Config) Validate() error {
 
 // AIFeatures defines which AI features are enabled
 type AIFeatures struct {
-	AnomalyDetection      bool `mapstructure:"anomaly_detection"`
+	AnomalyDetection        bool `mapstructure:"anomaly_detection"`
 	PerformanceOptimization bool `mapstructure:"performance_optimization"`
-	IncidentAnalysis      bool `mapstructure:"incident_analysis"`
+	IncidentAnalysis        bool `mapstructure:"incident_analysis"`
 }
 
 // SelfHealing defines automated remediation and optimization features
@@ -146,11 +146,11 @@ type SelfHealing struct {
 
 // MonitoringConfig defines monitoring and alerting settings
 type MonitoringConfig struct {
-	Enabled    bool                `mapstructure:"enabled"`
-	Platform   string              `mapstructure:"platform"` // "splunk", "loki", "prometheus"
-	Splunk     SplunkConfig        `mapstructure:"splunk"`
-	Loki       LokiConfig          `mapstructure:"loki"`
-	Prometheus PrometheusConfig    `mapstructure:"prometheus"`
+	Enabled    bool             `mapstructure:"enabled"`
+	Platform   string           `mapstructure:"platform"` // "splunk", "loki", "prometheus"
+	Splunk     SplunkConfig     `mapstructure:"splunk"`
+	Loki       LokiConfig       `mapstructure:"loki"`
+	Prometheus PrometheusConfig `mapstructure:"prometheus"`
 }
 
 // SplunkConfig defines Splunk-specific settings
@@ -174,8 +174,8 @@ var AppConfig Config
 
 // LoadConfig loads configuration from standard paths.
 func LoadConfig() (*Config, error) {
-	viper.AddConfigPath("/etc/kaf-mirror") // Production 
-	viper.AddConfigPath(filepath.Join(utils.ProjectRoot(), "configs")) // Development 
+	viper.AddConfigPath("/etc/kaf-mirror")                             // Production
+	viper.AddConfigPath(filepath.Join(utils.ProjectRoot(), "configs")) // Development
 	viper.SetConfigName("default")
 	viper.SetConfigType("yml")
 

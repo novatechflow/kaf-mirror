@@ -9,39 +9,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package ai_test
 
 import (
 	"context"
 	"kaf-mirror/internal/ai"
 	"kaf-mirror/internal/config"
-	"kaf-mirror/tests/mocks"
 	"testing"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAIClient(t *testing.T) {
-	mock := &mocks.MockOpenAIClient{
-		CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
-			return openai.ChatCompletionResponse{
-				Choices: []openai.ChatCompletionChoice{
-					{
-						Message: openai.ChatCompletionMessage{
-							Content: "Test response",
-						},
-					},
-				},
-			}, nil
-		},
-	}
+	mock := &fakeProvider{response: "Test response"}
 
-	client := &ai.Client{
-		Client: mock,
-		Cfg:    config.AIConfig{Model: "test-model"},
-	}
+	client := ai.NewClientWithProvider(config.AIConfig{Model: "test-model"}, mock)
 
 	t.Run("GetAnomalyDetection", func(t *testing.T) {
 		resp, err := client.GetAnomalyDetection(context.Background(), "some metrics")
@@ -60,4 +42,12 @@ func TestAIClient(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "Test response", resp)
 	})
+}
+
+type fakeProvider struct {
+	response string
+}
+
+func (f *fakeProvider) GetCompletion(ctx context.Context, prompt string) (string, error) {
+	return f.response, nil
 }

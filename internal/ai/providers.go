@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package ai
 
 import (
@@ -19,6 +18,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 )
 
 // ClaudeProvider implements Claude AI integration
@@ -85,6 +85,7 @@ type GeminiResponse struct {
 
 // GetCompletion implements AI completion for Claude
 func (c *ClaudeProvider) GetCompletion(ctx context.Context, prompt string) (string, error) {
+	endpoint := normalizeClaudeEndpoint(c.Endpoint)
 	reqBody := ClaudeRequest{
 		Model:     c.Model,
 		MaxTokens: 2048,
@@ -98,7 +99,7 @@ func (c *ClaudeProvider) GetCompletion(ctx context.Context, prompt string) (stri
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.Endpoint, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
@@ -137,6 +138,7 @@ func (c *ClaudeProvider) GetCompletion(ctx context.Context, prompt string) (stri
 
 // GetCompletion implements AI completion for Gemini
 func (g *GeminiProvider) GetCompletion(ctx context.Context, prompt string) (string, error) {
+	endpoint := normalizeGeminiEndpoint(g.Endpoint, g.Model)
 	reqBody := GeminiRequest{
 		Contents: []GeminiContent{
 			{
@@ -152,7 +154,7 @@ func (g *GeminiProvider) GetCompletion(ctx context.Context, prompt string) (stri
 		return "", err
 	}
 
-	url := fmt.Sprintf("%s?key=%s", g.Endpoint, g.APIKey)
+	url := fmt.Sprintf("%s?key=%s", endpoint, g.APIKey)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
@@ -190,6 +192,7 @@ func (g *GeminiProvider) GetCompletion(ctx context.Context, prompt string) (stri
 
 // GetCompletion implements AI completion for Grok (using OpenAI-compatible API)
 func (g *GrokProvider) GetCompletion(ctx context.Context, prompt string) (string, error) {
+	endpoint := normalizeChatCompletionsEndpoint(g.Endpoint, "https://api.x.ai/v1/chat/completions")
 	reqBody := map[string]interface{}{
 		"model": g.Model,
 		"messages": []map[string]string{
@@ -203,7 +206,7 @@ func (g *GrokProvider) GetCompletion(ctx context.Context, prompt string) (string
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", g.Endpoint, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
@@ -244,4 +247,40 @@ func (g *GrokProvider) GetCompletion(ctx context.Context, prompt string) (string
 	}
 
 	return "", fmt.Errorf("no response content from Grok")
+}
+
+func normalizeClaudeEndpoint(endpoint string) string {
+	if endpoint == "" {
+		return "https://api.anthropic.com/v1/messages"
+	}
+	trimmed := strings.TrimSuffix(endpoint, "/")
+	if strings.Contains(trimmed, "/messages") {
+		return trimmed
+	}
+	return trimmed + "/messages"
+}
+
+func normalizeGeminiEndpoint(endpoint, model string) string {
+	if model == "" {
+		model = "gemini-pro"
+	}
+	if endpoint == "" {
+		endpoint = "https://generativelanguage.googleapis.com/v1beta"
+	}
+	trimmed := strings.TrimSuffix(endpoint, "/")
+	if strings.Contains(trimmed, ":generateContent") {
+		return trimmed
+	}
+	return fmt.Sprintf("%s/models/%s:generateContent", trimmed, model)
+}
+
+func normalizeChatCompletionsEndpoint(endpoint, fallback string) string {
+	if endpoint == "" {
+		return fallback
+	}
+	trimmed := strings.TrimSuffix(endpoint, "/")
+	if strings.HasSuffix(trimmed, "/chat/completions") {
+		return trimmed
+	}
+	return trimmed + "/chat/completions"
 }

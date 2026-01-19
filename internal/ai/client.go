@@ -9,43 +9,106 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package ai
 
 import (
 	"context"
 	"fmt"
 	"kaf-mirror/internal/config"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/sashabaranov/go-openai"
 )
 
-// Client is a wrapper for the OpenAI client.
+// CompletionProvider abstracts a text completion backend.
+type CompletionProvider interface {
+	GetCompletion(context.Context, string) (string, error)
+}
+
+type openAIProvider struct {
+	client OpenAIClient
+	model  string
+}
+
+func (p *openAIProvider) GetCompletion(ctx context.Context, prompt string) (string, error) {
+	resp, err := p.client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: p.model,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt,
+				},
+			},
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+	return resp.Choices[0].Message.Content, nil
+}
+
+// Client is a wrapper for the AI provider.
 type Client struct {
-	Client OpenAIClient
-	Cfg    config.AIConfig
+	Provider CompletionProvider
+	Cfg      config.AIConfig
 }
 
 // NewClient creates a new AI client.
 func NewClient(cfg config.AIConfig) *Client {
-	if cfg.Provider == "custom" && cfg.Endpoint != "" {
-		// For custom endpoints, create config with custom endpoint
-		config := openai.DefaultConfig(cfg.Token)
-		config.BaseURL = cfg.Endpoint
-		return &Client{
-			Client: openai.NewClientWithConfig(config),
-			Cfg:    cfg,
+	return &Client{
+		Provider: buildProvider(cfg),
+		Cfg:      cfg,
+	}
+}
+
+// NewClientWithProvider creates a client with a custom provider (for tests).
+func NewClientWithProvider(cfg config.AIConfig, provider CompletionProvider) *Client {
+	return &Client{
+		Provider: provider,
+		Cfg:      cfg,
+	}
+}
+
+func buildProvider(cfg config.AIConfig) CompletionProvider {
+	switch strings.ToLower(cfg.Provider) {
+	case "claude":
+		return &ClaudeProvider{
+			APIKey:   cfg.Token,
+			Endpoint: cfg.Endpoint,
+			Model:    cfg.Model,
 		}
-	} else {
-		// For OpenAI or other standard providers
-		config := openai.DefaultConfig(cfg.Token)
+	case "gemini":
+		return &GeminiProvider{
+			APIKey:   cfg.Token,
+			Endpoint: cfg.Endpoint,
+			Model:    cfg.Model,
+		}
+	case "grok":
+		return &GrokProvider{
+			APIKey:   cfg.Token,
+			Endpoint: cfg.Endpoint,
+			Model:    cfg.Model,
+		}
+	case "custom", "openai", "":
+		fallthrough
+	default:
+		openaiCfg := openai.DefaultConfig(cfg.Token)
 		if cfg.Endpoint != "" {
-			config.BaseURL = cfg.Endpoint
+			openaiCfg.BaseURL = cfg.Endpoint
 		}
-		return &Client{
-			Client: openai.NewClientWithConfig(config),
-			Cfg:    cfg,
+		if cfg.APISecret != "" {
+			openaiCfg.HTTPClient = newHeaderHTTPClient(map[string]string{
+				"X-API-Secret": cfg.APISecret,
+				"X-API-Key":    cfg.Token,
+			})
+		}
+		return &openAIProvider{
+			client: openai.NewClientWithConfig(openaiCfg),
+			model:  cfg.Model,
 		}
 	}
 }
@@ -235,48 +298,41 @@ OPERATION LOGS:
 }
 
 func (c *Client) getCompletion(ctx context.Context, prompt string) (string, error) {
-	resp, err := c.Client.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: c.Cfg.Model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: prompt,
-				},
-			},
-		},
-	)
-
-	if err != nil {
-		return "", err
-	}
-
-	return resp.Choices[0].Message.Content, nil
+	return c.Provider.GetCompletion(ctx, prompt)
 }
 
 // getCompletionWithResponseTime returns both the completion and the response time in milliseconds
 func (c *Client) getCompletionWithResponseTime(ctx context.Context, prompt string) (string, int, error) {
 	startTime := time.Now()
-	
-	resp, err := c.Client.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: c.Cfg.Model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: prompt,
-				},
-			},
-		},
-	)
 
+	resp, err := c.Provider.GetCompletion(ctx, prompt)
 	responseTime := int(time.Since(startTime).Milliseconds())
-
 	if err != nil {
 		return "", responseTime, err
 	}
+	return resp, responseTime, nil
+}
 
-	return resp.Choices[0].Message.Content, responseTime, nil
+type headerRoundTripper struct {
+	base    http.RoundTripper
+	headers map[string]string
+}
+
+func (h *headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	for key, value := range h.headers {
+		if req.Header.Get(key) == "" {
+			req.Header.Set(key, value)
+		}
+	}
+	return h.base.RoundTrip(req)
+}
+
+func newHeaderHTTPClient(headers map[string]string) *http.Client {
+	base := http.DefaultTransport
+	return &http.Client{
+		Transport: &headerRoundTripper{
+			base:    base,
+			headers: headers,
+		},
+	}
 }
