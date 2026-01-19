@@ -19,6 +19,7 @@ logging:
 
 database:
   path: "data/kaf-mirror.db"
+  retention_days: 30
 
 clusters:
   source:

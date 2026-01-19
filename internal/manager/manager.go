@@ -156,11 +156,11 @@ func (jm *JobManager) startPruning() {
 
 	for {
 		select {
-		case <-ticker.C:
-			err := database.PruneOldData(jm.Db, 7)
-			if err != nil {
-				logger.Error("Failed to prune old data: %v", err)
-			}
+			case <-ticker.C:
+				err := database.PruneOldData(jm.Db, jm.Config.Database.RetentionDays)
+				if err != nil {
+					logger.Error("Failed to prune old data: %v", err)
+				}
 			err = database.ArchiveInactiveClusters(jm.Db, 72*time.Hour)
 			if err != nil {
 				logger.Error("Failed to archive inactive clusters: %v", err)

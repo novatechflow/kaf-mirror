@@ -61,12 +61,12 @@ The application is designed to be resilient to network issues and outages of the
 
 **b) Data Retention Policy**
 
-To prevent the internal SQLite database from growing indefinitely, the application enforces a 7-day retention policy for the following data:
+To prevent the internal SQLite database from growing indefinitely, the application enforces a 30-day retention policy by default for the following data:
 
 *   **Replication Metrics:** Time-series data on throughput, lag, etc.
 *   **Operational Events:** Audit logs of all state-modifying actions.
 
-This data is automatically pruned every 24 hours.
+This data is automatically pruned every 24 hours. Admins can configure a shorter period via `database.retention_days` (1–30 days).
 
 **Optional) Building binaries on your host**
 

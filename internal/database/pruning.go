@@ -19,7 +19,7 @@ import (
 )
 
 func PruneOldData(db *sqlx.DB, retentionDays int) error {
-	if retentionDays != 30 {
+	if retentionDays <= 0 || retentionDays > 30 {
 		retentionDays = 30
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)

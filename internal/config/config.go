@@ -53,7 +53,8 @@ type ServerConfig struct {
 
 // DatabaseConfig defines database settings
 type DatabaseConfig struct {
-	Path string `mapstructure:"path"`
+	Path          string `mapstructure:"path"`
+	RetentionDays int    `mapstructure:"retention_days"`
 }
 
 type LoggingConfig struct {
@@ -120,6 +121,12 @@ func (c *Config) Validate() error {
 	}
 	if len(c.Clusters) == 0 {
 		return fmt.Errorf("at least one cluster must be defined")
+	}
+	if c.Database.RetentionDays <= 0 {
+		c.Database.RetentionDays = 30
+	}
+	if c.Database.RetentionDays > 30 {
+		return fmt.Errorf("database retention_days must be between 1 and 30")
 	}
 	return nil
 }
@@ -192,6 +199,12 @@ func LoadConfig() (*Config, error) {
 
 	if err := viper.Unmarshal(&AppConfig); err != nil {
 		return nil, err
+	}
+	if AppConfig.Database.RetentionDays <= 0 {
+		AppConfig.Database.RetentionDays = 30
+	}
+	if AppConfig.Database.RetentionDays > 30 {
+		AppConfig.Database.RetentionDays = 30
 	}
 
 	// Dynamically set log file path with date if not already set
