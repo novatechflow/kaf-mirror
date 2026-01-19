@@ -59,6 +59,10 @@ clean:
 test:
 	@echo "Running tests..."
 	@go test ./tests/...
+	@echo "Running go vet..."
+	@go vet ./...
+	@echo "Running race tests..."
+	@go test -race ./...
 
 docker-build:
 	@echo "Building Docker image..."
