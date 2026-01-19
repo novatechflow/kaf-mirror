@@ -126,6 +126,7 @@ func (s *Server) setupRoutes() {
 	// Dashboard routes - HTML files served without auth (JS handles redirect)
 	s.App.Get("/", s.handleDashboard)
 	s.App.Get("/login", s.handleLoginPage)
+	s.App.Get("/login.html", s.handleLoginPage)
 
 	// Static assets (CSS, JS, images) - no auth required
 	webPath := s.getWebPath()
