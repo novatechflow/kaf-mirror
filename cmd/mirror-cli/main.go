@@ -553,6 +553,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 		},
 	}
 
+	var passwordFile string
 	var resetUserPasswordCmd = &cobra.Command{
 		Use:   "reset-password [username]",
 		Short: "Reset a user's password (admin only).",
@@ -646,17 +647,53 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 			}
 
 			newPassword := resetResp["new_password"]
+			outputPath := passwordFile
+			if outputPath == "" {
+				file, err := os.CreateTemp("", "kaf-mirror-password-*.txt")
+				if err != nil {
+					fmt.Printf("Error: Failed to create password file: %v\n", err)
+					return
+				}
+				outputPath = file.Name()
+				if _, err := file.WriteString(newPassword + "\n"); err != nil {
+					file.Close()
+					fmt.Printf("Error: Failed to write password file: %v\n", err)
+					return
+				}
+				if err := file.Close(); err != nil {
+					fmt.Printf("Error: Failed to close password file: %v\n", err)
+					return
+				}
+			} else {
+				file, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+				if err != nil {
+					fmt.Printf("Error: Failed to open password file: %v\n", err)
+					return
+				}
+				if _, err := file.WriteString(newPassword + "\n"); err != nil {
+					file.Close()
+					fmt.Printf("Error: Failed to write password file: %v\n", err)
+					return
+				}
+				if err := file.Close(); err != nil {
+					fmt.Printf("Error: Failed to close password file: %v\n", err)
+					return
+				}
+			}
 			fmt.Println("=================================================================")
 			fmt.Println("  PASSWORD RESET SUCCESSFUL")
 			fmt.Println("=================================================================")
 			fmt.Printf("  Username: %s\n", username)
-			fmt.Printf("  New Password: %s\n", newPassword)
+			fmt.Println("  New Password: ********")
+			fmt.Printf("  Password File: %s\n", outputPath)
 			fmt.Println("=================================================================")
 			fmt.Println("  Please provide this password to the user securely.")
+			fmt.Println("  Delete the password file after delivery.")
 			fmt.Println("  The user should change this password on first login.")
 			fmt.Println("=================================================================")
 		},
 	}
+	resetUserPasswordCmd.Flags().StringVar(&passwordFile, "password-file", "", "Write new password to file instead of stdout")
 
 	usersCmd.AddCommand(listUsersCmd, addUserCmd, setUserRoleCmd, resetTokenCmd, deleteUserCmd, resetUserPasswordCmd)
 
