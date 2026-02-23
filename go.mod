@@ -7,7 +7,7 @@ require (
 	github.com/c-bata/go-prompt v0.2.6
 	github.com/gizak/termui/v3 v3.1.0
 	github.com/gofiber/contrib/websocket v1.3.4
-	github.com/gofiber/fiber/v2 v2.52.9
+	github.com/gofiber/fiber/v2 v2.52.11
 	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a
 	github.com/google/uuid v1.6.0
 	github.com/jmoiron/sqlx v1.4.0
