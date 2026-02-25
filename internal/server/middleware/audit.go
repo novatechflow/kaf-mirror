@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package middleware
 
 import (
@@ -73,7 +72,7 @@ func AuditLog(db *sqlx.DB) fiber.Handler {
 func formatAuditDetails(c *fiber.Ctx) string {
 	path := c.Path()
 	method := c.Method()
-	
+
 	// Create summary based on endpoint
 	switch {
 	case strings.Contains(path, "/jobs") && method == "POST":
@@ -148,7 +147,7 @@ func formatConfigUpdate(c *fiber.Ctx) string {
 	}
 
 	details := []string{}
-	
+
 	if ai, ok := configData["AI"].(map[string]interface{}); ok {
 		if provider := getStringValue(ai, "Provider"); provider != "" {
 			details = append(details, fmt.Sprintf("AI Provider: %s", provider))

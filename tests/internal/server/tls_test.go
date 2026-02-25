@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package server
 
 import (
@@ -46,15 +45,15 @@ func TestTLSServerConfiguration(t *testing.T) {
 		Server: config.ServerConfig{
 			Host: "localhost",
 			Port: 0, // Use random port
-		TLS: struct {
-			Enabled  bool   `mapstructure:"enabled"`
-			CertFile string `mapstructure:"cert_file"`
-			KeyFile  string `mapstructure:"key_file"`
-		}{
-			Enabled:  true,
-			CertFile: certFile,
-			KeyFile:  keyFile,
-		},
+			TLS: struct {
+				Enabled  bool   `mapstructure:"enabled"`
+				CertFile string `mapstructure:"cert_file"`
+				KeyFile  string `mapstructure:"key_file"`
+			}{
+				Enabled:  true,
+				CertFile: certFile,
+				KeyFile:  keyFile,
+			},
 		},
 		AI: config.AIConfig{
 			Provider: "openai",
@@ -83,11 +82,11 @@ func TestTLSServerConfiguration(t *testing.T) {
 	if !cfg.Server.TLS.Enabled {
 		t.Error("Expected TLS to be enabled")
 	}
-	
+
 	if cfg.Server.TLS.CertFile == "" {
 		t.Error("Expected certificate file to be set")
 	}
-	
+
 	if cfg.Server.TLS.KeyFile == "" {
 		t.Error("Expected key file to be set")
 	}
@@ -96,7 +95,7 @@ func TestTLSServerConfiguration(t *testing.T) {
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
 		t.Errorf("Certificate file does not exist: %s", certFile)
 	}
-	
+
 	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
 		t.Errorf("Key file does not exist: %s", keyFile)
 	}
@@ -110,13 +109,13 @@ func TestTLSDisabledConfiguration(t *testing.T) {
 		Server: config.ServerConfig{
 			Host: "localhost",
 			Port: 0,
-		TLS: struct {
-			Enabled  bool   `mapstructure:"enabled"`
-			CertFile string `mapstructure:"cert_file"`
-			KeyFile  string `mapstructure:"key_file"`
-		}{
-			Enabled: false,
-		},
+			TLS: struct {
+				Enabled  bool   `mapstructure:"enabled"`
+				CertFile string `mapstructure:"cert_file"`
+				KeyFile  string `mapstructure:"key_file"`
+			}{
+				Enabled: false,
+			},
 		},
 		AI: config.AIConfig{
 			Provider: "openai",
@@ -216,15 +215,15 @@ func TestTLSConfigurationUpdate(t *testing.T) {
 		Server: config.ServerConfig{
 			Host: "localhost",
 			Port: 0,
-		TLS: struct {
-			Enabled  bool   `mapstructure:"enabled"`
-			CertFile string `mapstructure:"cert_file"`
-			KeyFile  string `mapstructure:"key_file"`
-		}{
-			Enabled:  true,
-			CertFile: certFile1,
-			KeyFile:  keyFile1,
-		},
+			TLS: struct {
+				Enabled  bool   `mapstructure:"enabled"`
+				CertFile string `mapstructure:"cert_file"`
+				KeyFile  string `mapstructure:"key_file"`
+			}{
+				Enabled:  true,
+				CertFile: certFile1,
+				KeyFile:  keyFile1,
+			},
 		},
 		AI: config.AIConfig{
 			Provider: "openai",

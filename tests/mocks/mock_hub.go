@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package mocks
 
 // MockHub is a mock implementation of the Hub interface.

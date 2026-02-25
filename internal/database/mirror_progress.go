@@ -75,7 +75,7 @@ func UpdateMirrorProgress(db *sqlx.DB, progress MirrorProgress) error {
 
 func GetMirrorProgress(db *sqlx.DB, jobID string) ([]MirrorProgress, error) {
 	query := `SELECT * FROM mirror_progress WHERE job_id = ? ORDER BY source_topic, partition_id`
-	
+
 	progress := make([]MirrorProgress, 0)
 	err := db.Select(&progress, query, jobID)
 	if err != nil {
@@ -86,7 +86,7 @@ func GetMirrorProgress(db *sqlx.DB, jobID string) ([]MirrorProgress, error) {
 
 func GetMirrorProgressByTopic(db *sqlx.DB, jobID, sourceTopic string) ([]MirrorProgress, error) {
 	query := `SELECT * FROM mirror_progress WHERE job_id = ? AND source_topic = ? ORDER BY partition_id`
-	
+
 	var progress []MirrorProgress
 	err := db.Select(&progress, query, jobID, sourceTopic)
 	if err != nil {
@@ -104,11 +104,11 @@ func CreateMigrationCheckpoint(db *sqlx.DB, checkpoint MigrationCheckpoint) (int
 		RETURNING id`
 
 	var id int
-	err := db.QueryRow(query, checkpoint.JobID, checkpoint.CheckpointType, 
+	err := db.QueryRow(query, checkpoint.JobID, checkpoint.CheckpointType,
 		checkpoint.SourceConsumerGroupOffsets, checkpoint.TargetHighWaterMarks,
-		checkpoint.CreatedAt, checkpoint.CreatedBy, checkpoint.MigrationReason, 
+		checkpoint.CreatedAt, checkpoint.CreatedBy, checkpoint.MigrationReason,
 		checkpoint.ValidationResults).Scan(&id)
-	
+
 	if err != nil {
 		return 0, fmt.Errorf("failed to create migration checkpoint: %w", err)
 	}
@@ -117,7 +117,7 @@ func CreateMigrationCheckpoint(db *sqlx.DB, checkpoint MigrationCheckpoint) (int
 
 func GetLatestMigrationCheckpoint(db *sqlx.DB, jobID string) (*MigrationCheckpoint, error) {
 	query := `SELECT * FROM migration_checkpoints WHERE job_id = ? ORDER BY created_at DESC LIMIT 1`
-	
+
 	var checkpoint MigrationCheckpoint
 	err := db.Get(&checkpoint, query, jobID)
 	if err != nil {
@@ -149,8 +149,8 @@ func CalculateResumePoints(db *sqlx.DB, jobID string, resumePointsData map[strin
 	for sourceTopic, partitions := range resumePointsData {
 		// Get corresponding target topic from topic mappings
 		var targetTopic string
-		err = tx.Get(&targetTopic, 
-			"SELECT target_topic_pattern FROM topic_mappings WHERE job_id = ? AND source_topic_pattern = ? LIMIT 1", 
+		err = tx.Get(&targetTopic,
+			"SELECT target_topic_pattern FROM topic_mappings WHERE job_id = ? AND source_topic_pattern = ? LIMIT 1",
 			jobID, sourceTopic)
 		if err != nil {
 			targetTopic = sourceTopic // Fallback to same name
@@ -158,8 +158,8 @@ func CalculateResumePoints(db *sqlx.DB, jobID string, resumePointsData map[strin
 
 		for partitionID, resumeOffset := range partitions {
 			gapDetected := resumeOffset > 0
-			
-			_, err = tx.Exec(insertQuery, jobID, sourceTopic, targetTopic, partitionID, 
+
+			_, err = tx.Exec(insertQuery, jobID, sourceTopic, targetTopic, partitionID,
 				resumeOffset, time.Now(), "pending", checkpointID, gapDetected)
 			if err != nil {
 				return fmt.Errorf("failed to insert resume point: %w", err)
@@ -175,7 +175,7 @@ func GetResumePoints(db *sqlx.DB, jobID string) ([]ResumePoint, error) {
 		SELECT * FROM resume_points 
 		WHERE job_id = ? 
 		ORDER BY calculated_at DESC, source_topic, partition_id`
-	
+
 	resumePoints := make([]ResumePoint, 0)
 	err := db.Select(&resumePoints, query, jobID)
 	if err != nil {
@@ -195,7 +195,7 @@ func GetLatestResumePoints(db *sqlx.DB, jobID string) (map[string]map[int32]int6
 			WHERE job_id = ?
 		)
 		ORDER BY source_topic, partition_id`
-	
+
 	rows, err := db.Query(query, jobID, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest resume points: %w", err)
@@ -207,7 +207,7 @@ func GetLatestResumePoints(db *sqlx.DB, jobID string) (map[string]map[int32]int6
 		var sourceTopic string
 		var partitionID int32
 		var resumeOffset int64
-		
+
 		err = rows.Scan(&sourceTopic, &partitionID, &resumeOffset)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan resume point: %w", err)
@@ -232,14 +232,14 @@ func StoreMirrorStateAnalysis(db *sqlx.DB, analysis MirrorStateAnalysis) (int, e
 		RETURNING id`
 
 	recommendationsJSON, _ := json.Marshal(analysis.Recommendations)
-	
+
 	var id int
-	err := db.QueryRow(query, analysis.JobID, analysis.AnalysisType, 
+	err := db.QueryRow(query, analysis.JobID, analysis.AnalysisType,
 		analysis.SourceClusterState, analysis.TargetClusterState,
 		analysis.AnalysisResults, string(recommendationsJSON),
 		analysis.CriticalIssuesCount, analysis.WarningIssuesCount,
 		analysis.AnalyzedAt, analysis.AnalyzerVersion).Scan(&id)
-	
+
 	if err != nil {
 		return 0, fmt.Errorf("failed to store mirror state analysis: %w", err)
 	}
@@ -248,7 +248,7 @@ func StoreMirrorStateAnalysis(db *sqlx.DB, analysis MirrorStateAnalysis) (int, e
 
 func GetMirrorStateAnalysis(db *sqlx.DB, jobID string) ([]MirrorStateAnalysis, error) {
 	query := `SELECT * FROM mirror_state_analysis WHERE job_id = ? ORDER BY analyzed_at DESC`
-	
+
 	analyses := make([]MirrorStateAnalysis, 0)
 	err := db.Select(&analyses, query, jobID)
 	if err != nil {
@@ -275,7 +275,7 @@ func DetectMirrorGaps(db *sqlx.DB, jobID string, gaps []MirrorGap) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	for _, gap := range gaps {
-		_, err = tx.Exec(insertQuery, gap.JobID, gap.SourceTopic, gap.TargetTopic, 
+		_, err = tx.Exec(insertQuery, gap.JobID, gap.SourceTopic, gap.TargetTopic,
 			gap.PartitionID, gap.GapStartOffset, gap.GapEndOffset, gap.GapSize,
 			gap.DetectedAt, gap.GapType, gap.ResolutionStatus)
 		if err != nil {
@@ -288,7 +288,7 @@ func DetectMirrorGaps(db *sqlx.DB, jobID string, gaps []MirrorGap) error {
 
 func GetMirrorGaps(db *sqlx.DB, jobID string) ([]MirrorGap, error) {
 	query := `SELECT * FROM mirror_gaps WHERE job_id = ? ORDER BY detected_at DESC`
-	
+
 	gaps := make([]MirrorGap, 0)
 	err := db.Select(&gaps, query, jobID)
 	if err != nil {
@@ -299,7 +299,7 @@ func GetMirrorGaps(db *sqlx.DB, jobID string) ([]MirrorGap, error) {
 
 func GetUnresolvedMirrorGaps(db *sqlx.DB, jobID string) ([]MirrorGap, error) {
 	query := `SELECT * FROM mirror_gaps WHERE job_id = ? AND resolution_status = 'unresolved' ORDER BY detected_at DESC`
-	
+
 	var gaps []MirrorGap
 	err := db.Select(&gaps, query, jobID)
 	if err != nil {

@@ -9,18 +9,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package server
 
 import (
 	"fmt"
-	"log"
 	"kaf-mirror/internal/ai"
 	"kaf-mirror/internal/config"
 	"kaf-mirror/internal/database"
 	"kaf-mirror/internal/manager"
 	"kaf-mirror/internal/server/middleware"
 	"kaf-mirror/pkg/logger"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -81,20 +80,20 @@ func New(cfg *config.Config, db *sqlx.DB, manager *manager.JobManager, hub *Hub,
 // Start runs the Fiber server.
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.cfg.Server.Host, s.cfg.Server.Port)
-	
+
 	// Check if TLS is enabled
 	if s.cfg.Server.TLS.Enabled {
 		certFile := s.cfg.Server.TLS.CertFile
 		keyFile := s.cfg.Server.TLS.KeyFile
-		
+
 		if certFile == "" || keyFile == "" {
 			return fmt.Errorf("TLS is enabled but certificate or key file path is missing")
 		}
-		
+
 		logger.Info("Starting HTTPS server on %s with TLS certificate: %s", addr, certFile)
 		return s.App.ListenTLS(addr, certFile, keyFile)
 	}
-	
+
 	logger.Info("Starting HTTP server on %s", addr)
 	return s.App.Listen(addr)
 }

@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package database
 
 import (
@@ -35,22 +34,22 @@ func PruneOldData(db *sqlx.DB, retentionDays int) error {
 	}
 
 	mirrorStateCutoff := time.Now().AddDate(0, 0, -7) // 7 days ago
-	
+
 	_, err = db.Exec(`DELETE FROM mirror_progress WHERE last_updated < ?`, mirrorStateCutoff)
 	if err != nil {
 		return err
 	}
-	
+
 	_, err = db.Exec(`DELETE FROM resume_points WHERE calculated_at < ?`, mirrorStateCutoff)
 	if err != nil {
 		return err
 	}
-	
+
 	_, err = db.Exec(`DELETE FROM mirror_gaps WHERE detected_at < ?`, mirrorStateCutoff)
 	if err != nil {
 		return err
 	}
-	
+
 	_, err = db.Exec(`DELETE FROM mirror_state_analysis WHERE analyzed_at < ?`, mirrorStateCutoff)
 	if err != nil {
 		return err

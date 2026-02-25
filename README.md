@@ -1,4 +1,7 @@
 # kaf-mirror
+[![CI (Smoke+Go)](https://github.com/scalytics/kaf-mirror/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/scalytics/kaf-mirror/actions/workflows/ci.yml)
+[![Release](https://github.com/scalytics/kaf-mirror/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/scalytics/kaf-mirror/actions/workflows/release.yml)
+[![CodeQL](https://github.com/scalytics/kaf-mirror/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/scalytics/kaf-mirror/actions/workflows/codeql.yml)
 
 **kaf-mirror** is a high-performance, AI-enhanced Kafka replication tool designed for robust and intelligent data mirroring between Kafka clusters.
 

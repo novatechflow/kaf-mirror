@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package analysis
 
 import (
@@ -23,13 +22,13 @@ import (
 
 // LogEntry represents a single parsed log entry.
 type LogEntry struct {
-	Timestamp time.Time
-	Level     string
-	Component string
-	Message   string
-	AICategory string
+	Timestamp     time.Time
+	Level         string
+	Component     string
+	Message       string
+	AICategory    string
 	AISubcategory string
-	JobID     string
+	JobID         string
 }
 
 // GetLogsForJob retrieves logs for a specific jobID from the log file.
@@ -53,8 +52,8 @@ func GetLogsForJob(logDir, jobID string, since time.Time) ([]LogEntry, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Include both AI-tagged logs for the job and regular job logs
-		if strings.Contains(line, fmt.Sprintf("[job:%s]", jobID)) || 
-		   (strings.Contains(line, "[AI:") && strings.Contains(line, jobID)) {
+		if strings.Contains(line, fmt.Sprintf("[job:%s]", jobID)) ||
+			(strings.Contains(line, "[AI:") && strings.Contains(line, jobID)) {
 			entry, err := parseLogLine(line)
 			if err == nil && entry.Timestamp.After(since) {
 				entries = append(entries, entry)
@@ -73,12 +72,12 @@ func parseLogLine(line string) (LogEntry, error) {
 	if !strings.HasPrefix(line, "[") {
 		return entry, fmt.Errorf("invalid log line format - no timestamp")
 	}
-	
+
 	tsEnd := strings.Index(line, "]")
 	if tsEnd == -1 {
 		return entry, fmt.Errorf("invalid log line format - unclosed timestamp")
 	}
-	
+
 	tsStr := line[1:tsEnd]
 	ts, err := time.Parse("2006-01-02 15:04:05.000", tsStr)
 	if err != nil {
@@ -89,7 +88,7 @@ func parseLogLine(line string) (LogEntry, error) {
 	// Parse level - after timestamp
 	remaining := line[tsEnd+1:]
 	remaining = strings.TrimSpace(remaining)
-	
+
 	levelEnd := strings.Index(remaining, " ")
 	if levelEnd == -1 {
 		return entry, fmt.Errorf("invalid log line format - no level")

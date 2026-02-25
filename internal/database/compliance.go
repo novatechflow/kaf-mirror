@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package database
 
 import (
@@ -500,14 +499,14 @@ func GenerateComplianceCSV(report *ComplianceReport) ([]byte, error) {
 // ListComplianceReports retrieves a list of compliance reports
 func ListComplianceReports(db *sqlx.DB, limit int) ([]ComplianceReport, error) {
 	var reports []ComplianceReport
-	
+
 	query := `
 		SELECT id, period, start_date, end_date, generated_by, generated_at, report_data
 		FROM compliance_reports
 		ORDER BY generated_at DESC
 		LIMIT ?
 	`
-	
+
 	rows, err := db.Query(query, limit)
 	if err != nil {
 		return nil, err
@@ -520,12 +519,12 @@ func ListComplianceReports(db *sqlx.DB, limit int) ([]ComplianceReport, error) {
 			&report.GeneratedBy, &report.GeneratedAt, &report.ReportDataDB); err != nil {
 			continue
 		}
-		
+
 		// Parse JSON data
 		if err := json.Unmarshal([]byte(report.ReportDataDB), &report.ReportData); err != nil {
 			report.ReportData = make(map[string]interface{})
 		}
-		
+
 		reports = append(reports, report)
 	}
 

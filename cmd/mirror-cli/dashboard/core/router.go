@@ -66,7 +66,7 @@ func (er *EventRouter) routeTopLevelEvent(event ui.Event) EventAction {
 	case "<Enter>":
 		return SelectItemAction{}
 	}
-	
+
 	return NoAction{}
 }
 
@@ -102,7 +102,7 @@ func (er *EventRouter) routeCategoryEvent(event ui.Event) EventAction {
 			return JobControlAction{Action: "restart"}
 		}
 	}
-	
+
 	return NoAction{}
 }
 
@@ -119,7 +119,7 @@ func (er *EventRouter) routeDetailEvent(event ui.Event) EventAction {
 	case "r", "R":
 		return RefreshAction{}
 	}
-	
+
 	return NoAction{}
 }
 

@@ -43,7 +43,7 @@ func TestGetKgoOpts(t *testing.T) {
 		// A more direct way would be to inspect the opts slice, but the SASL option is a function literal.
 		// This approach verifies the end result.
 		// Note: This doesn't actually connect to Azure, it just configures the client.
-		
+
 		// A better way to test this would be to export the SASL options from the kafka package,
 		// but for now, we will rely on this indirect verification.
 

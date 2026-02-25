@@ -11,14 +11,14 @@ type ClustersFactory struct {
 
 func NewClustersFactory() *ClustersFactory {
 	base := NewBaseWidgetFactory()
-	
+
 	cf := &ClustersFactory{
 		BaseWidgetFactory: base,
 	}
-	
+
 	cf.listWidget.Title = "Clusters (Press Enter for details, R to refresh)"
 	cf.detailWidget.Title = "Cluster Health"
-	
+
 	return cf
 }
 
@@ -31,13 +31,13 @@ func (cf *ClustersFactory) UpdateListData(dataManager *core.DataManager) error {
 		}
 		return err
 	}
-	
+
 	cf.items = clusters
-	
+
 	rows := []string{
 		"Name | Provider | Status | Health | Brokers",
 	}
-	
+
 	if len(clusters) == 0 {
 		rows = append(rows, "No clusters configured")
 	} else {
@@ -46,7 +46,7 @@ func (cf *ClustersFactory) UpdateListData(dataManager *core.DataManager) error {
 			provider := SafeString(cluster["provider"], "N/A")
 			status := SafeString(cluster["status"], "unknown")
 			brokers := SafeString(cluster["brokers"], "N/A")
-			
+
 			// Determine health status based on status and other factors
 			healthStatus := "Unknown"
 			switch status {
@@ -59,11 +59,11 @@ func (cf *ClustersFactory) UpdateListData(dataManager *core.DataManager) error {
 			default:
 				healthStatus = "? " + status
 			}
-			
+
 			if len(brokers) > 25 {
 				brokers = brokers[:22] + "..."
 			}
-			
+
 			row := fmt.Sprintf("%s | %s | %s | %s | %s",
 				TruncateString(name, 15),
 				TruncateString(provider, 10),
@@ -71,13 +71,13 @@ func (cf *ClustersFactory) UpdateListData(dataManager *core.DataManager) error {
 				healthStatus,
 				brokers,
 			)
-			
+
 			rows = append(rows, row)
 		}
 	}
-	
+
 	cf.listWidget.Rows = rows
-	
+
 	// Maintain selection within bounds
 	if cf.selectedIdx >= len(cf.items) {
 		cf.selectedIdx = len(cf.items) - 1
@@ -88,7 +88,7 @@ func (cf *ClustersFactory) UpdateListData(dataManager *core.DataManager) error {
 	if len(cf.items) > 0 {
 		cf.listWidget.SelectedRow = cf.selectedIdx + 1 // +1 for header
 	}
-	
+
 	return nil
 }
 
@@ -97,7 +97,7 @@ func (cf *ClustersFactory) UpdateDetailData(dataManager *core.DataManager, itemI
 		cf.detailWidget.Rows = []string{"Select a cluster from the list to view details"}
 		return nil
 	}
-	
+
 	cluster, err := dataManager.GetClusterDetails(itemID)
 	if err != nil {
 		cf.detailWidget.Rows = []string{
@@ -106,9 +106,9 @@ func (cf *ClustersFactory) UpdateDetailData(dataManager *core.DataManager, itemI
 		}
 		return err
 	}
-	
+
 	var rows []string
-	
+
 	rows = append(rows, "=== CLUSTER INFORMATION ===")
 	rows = append(rows, fmt.Sprintf("Name: %s", SafeString(cluster["name"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Provider: %s", SafeString(cluster["provider"], "N/A")))
@@ -119,14 +119,14 @@ func (cf *ClustersFactory) UpdateDetailData(dataManager *core.DataManager, itemI
 	rows = append(rows, fmt.Sprintf("Brokers: %s", SafeString(cluster["brokers"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Created: %s", SafeString(cluster["created_at"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Updated: %s", SafeString(cluster["updated_at"], "N/A")))
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== HEALTH STATUS ===")
-	
+
 	status := SafeString(cluster["status"], "unknown")
 	connectionStatus := "Unknown"
 	overallHealth := "Unknown"
-	
+
 	// Simulate connection test results (in real implementation, this would call testClusterConnectionVerbose)
 	switch status {
 	case "active":
@@ -142,25 +142,25 @@ func (cf *ClustersFactory) UpdateDetailData(dataManager *core.DataManager, itemI
 		connectionStatus = "❓ Status unknown"
 		overallHealth = "❓ UNKNOWN - Unable to determine health"
 	}
-	
+
 	rows = append(rows, fmt.Sprintf("Connection Status: %s", connectionStatus))
 	rows = append(rows, fmt.Sprintf("Overall Health: %s", overallHealth))
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== SECURITY CONFIGURATION ===")
-	
+
 	if apiKey := cluster["api_key"]; apiKey != nil && SafeString(apiKey, "") != "" {
 		rows = append(rows, "Authentication: ✅ API Key configured")
 		rows = append(rows, fmt.Sprintf("API Key: %s", maskSensitiveValue(SafeString(apiKey, ""))))
 	} else {
 		rows = append(rows, "Authentication: ❌ No authentication configured")
 	}
-	
+
 	provider := SafeString(cluster["provider"], "unknown")
 	rows = append(rows, "")
 	rows = append(rows, "=== PROVIDER DETAILS ===")
 	rows = append(rows, fmt.Sprintf("Provider Type: %s", provider))
-	
+
 	switch provider {
 	case "confluent":
 		rows = append(rows, "Platform: Confluent Cloud")
@@ -181,10 +181,10 @@ func (cf *ClustersFactory) UpdateDetailData(dataManager *core.DataManager, itemI
 	default:
 		rows = append(rows, "Platform: Unknown/Custom")
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== TOPIC INFORMATION ===")
-	
+
 	if status == "active" {
 		rows = append(rows, "Topics Available: Calculating...")
 		rows = append(rows, "Sample Topics:")
@@ -195,10 +195,10 @@ func (cf *ClustersFactory) UpdateDetailData(dataManager *core.DataManager, itemI
 	} else {
 		rows = append(rows, "Topics: Cannot fetch - cluster not accessible")
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== PERFORMANCE INDICATORS ===")
-	
+
 	if status == "active" {
 		rows = append(rows, "Broker Response Time: < 10ms")
 		rows = append(rows, "Connection Pool: 8/10 connections")
@@ -208,16 +208,16 @@ func (cf *ClustersFactory) UpdateDetailData(dataManager *core.DataManager, itemI
 		rows = append(rows, "Performance metrics unavailable")
 		rows = append(rows, "Reason: Cluster not active or accessible")
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== CLUSTER OPERATIONS ===")
 	rows = append(rows, "Press 'R' to refresh cluster data")
 	rows = append(rows, "Press 'B' or Escape to go back")
 	rows = append(rows, "Use 'mirror-cli clusters test [name]' for detailed diagnostics")
-	
+
 	cf.detailWidget.Rows = rows
 	cf.detailWidget.Title = fmt.Sprintf("Cluster Health: %s", SafeString(cluster["name"], itemID))
-	
+
 	return nil
 }
 

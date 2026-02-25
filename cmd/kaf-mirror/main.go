@@ -37,6 +37,26 @@ var (
 	Version string
 )
 
+func writeSecretTempFile(prefix string, secret string) (string, error) {
+	file, err := os.CreateTemp("", prefix)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	if err := file.Chmod(0600); err != nil {
+		return "", err
+	}
+	if _, err := file.WriteString(secret + "\n"); err != nil {
+		return "", err
+	}
+	if err := file.Sync(); err != nil {
+		return "", err
+	}
+
+	return file.Name(), nil
+}
+
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -76,6 +96,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to create initial admin user: %v", err)
 		}
+		secretFile, err := writeSecretTempFile("kaf-mirror-bootstrap-*", password)
+		if err != nil {
+			log.Fatalf("Failed to write password file: %v", err)
+		}
 
 		var adminRoleID int
 		if err := db.Get(&adminRoleID, "SELECT id FROM roles WHERE name = 'admin'"); err != nil {
@@ -89,9 +113,10 @@ func main() {
 		fmt.Println("  INITIAL ADMIN USER CREATED")
 		fmt.Println("=================================================================")
 		fmt.Printf("  Username: %s\n", user.Username)
-		fmt.Printf("  Password: %s\n", password)
+		fmt.Println("  Password: [REDACTED]")
+		fmt.Printf("  Password File: %s\n", secretFile)
 		fmt.Println("=================================================================")
-		fmt.Println("  Please store this password in a secure location.")
+		fmt.Println("  Deliver the password securely, then delete the file.")
 		fmt.Println("=================================================================")
 	}
 	fmt.Println("Database initialized successfully.")

@@ -14,7 +14,7 @@ package widgets
 import (
 	"fmt"
 	"kaf-mirror/cmd/mirror-cli/dashboard/core"
-	
+
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
 )
@@ -34,11 +34,11 @@ type WidgetFactory interface {
 }
 
 type BaseWidgetFactory struct {
-	listWidget     *widgets.List
-	detailWidget   *widgets.List
-	selectedIdx    int
+	listWidget      *widgets.List
+	detailWidget    *widgets.List
+	selectedIdx     int
 	detailCursorIdx int
-	items          []map[string]interface{}
+	items           []map[string]interface{}
 }
 
 func NewBaseWidgetFactory() *BaseWidgetFactory {
@@ -107,7 +107,7 @@ func (bwf *BaseWidgetFactory) ScrollDetail(direction core.Direction) {
 	if maxRows == 0 {
 		return
 	}
-	
+
 	switch direction {
 	case core.Down:
 		if bwf.detailCursorIdx < maxRows-1 {
@@ -128,7 +128,7 @@ func (bwf *BaseWidgetFactory) ScrollDetail(direction core.Direction) {
 			bwf.detailCursorIdx = 0
 		}
 	}
-	
+
 	bwf.detailWidget.SelectedRow = bwf.detailCursorIdx
 }
 
@@ -153,7 +153,7 @@ func (bwf *BaseWidgetFactory) GetSelectedItemID() string {
 	if bwf.selectedIdx < 0 || bwf.selectedIdx >= len(bwf.items) {
 		return ""
 	}
-	
+
 	item := bwf.items[bwf.selectedIdx]
 	// Try id field first (handle both string and integer IDs)
 	if id := item["id"]; id != nil {
@@ -169,7 +169,7 @@ func (bwf *BaseWidgetFactory) GetSelectedItemName() string {
 	if bwf.selectedIdx < 0 || bwf.selectedIdx >= len(bwf.items) {
 		return ""
 	}
-	
+
 	item := bwf.items[bwf.selectedIdx]
 	// Try name field first, fallback to id
 	if name, ok := item["name"].(string); ok {

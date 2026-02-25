@@ -15,7 +15,7 @@ import (
 
 func main() {
 	fmt.Println("Generating CLI documentation...")
-	
+
 	fmt.Println("Updating Go dependencies...")
 	modCmd := exec.Command("go", "mod", "tidy")
 	modCmd.Stdout = os.Stdout
@@ -24,12 +24,12 @@ func main() {
 		fmt.Printf("Error updating dependencies: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	if err := os.MkdirAll("bin", 0755); err != nil {
 		fmt.Printf("Error creating bin directory: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println("Building CLI...")
 	buildCmd := exec.Command("go", "build", "-o", "bin/mirror-cli", "./cmd/mirror-cli")
 	buildCmd.Stdout = os.Stdout
@@ -38,26 +38,26 @@ func main() {
 		fmt.Printf("Error building CLI: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println("Generating single consolidated Markdown documentation file...")
 	docsCmd := exec.Command("./bin/mirror-cli", "docs", "generate", "--file", "./docs/cli-commands.md")
 	docsCmd.Stdout = os.Stdout
 	docsCmd.Stderr = os.Stderr
-	
+
 	if err := docsCmd.Run(); err != nil {
 		fmt.Printf("Error generating docs: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println("Converting Markdown documentation to HTML...")
 	if err := convertMarkdownToHTML("./docs/cli-commands.md", "./docs/cli-commands.html"); err != nil {
 		fmt.Printf("Error converting to HTML: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println("CLI documentation generated successfully!")
 	fmt.Println("- Markdown file: ./docs/cli-commands.md")
-	fmt.Println("- HTML file: ./docs/cli-commands.html") 
+	fmt.Println("- HTML file: ./docs/cli-commands.html")
 }
 
 // convertMarkdownToHTML converts the comprehensive Markdown file to HTML
@@ -298,10 +298,10 @@ func convertMarkdownToHTML(markdownFile, htmlFile string) error {
 
 	scanner = bufio.NewScanner(file)
 	inCodeBlock := false
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		if strings.HasPrefix(line, "```") {
 			if inCodeBlock {
 				htmlOutput.WriteString("</pre>\n")
@@ -312,20 +312,20 @@ func convertMarkdownToHTML(markdownFile, htmlFile string) error {
 			}
 			continue
 		}
-		
+
 		if inCodeBlock {
 			htmlOutput.WriteString(html.EscapeString(line) + "\n")
 			continue
 		}
-		
+
 		htmlLine := convertMarkdownLine(line)
 		htmlOutput.WriteString(htmlLine + "\n")
 	}
-	
+
 	if inCodeBlock {
 		htmlOutput.WriteString("</code></pre>\n")
 	}
-	
+
 	htmlOutput.WriteString(`
         </main>
     </div>
@@ -387,7 +387,7 @@ func convertMarkdownLine(line string) string {
 	if line == "" {
 		return "<br>"
 	}
-	
+
 	// Headers with anchors
 	if strings.HasPrefix(line, "######") {
 		title := strings.TrimSpace(line[6:])
@@ -414,17 +414,17 @@ func convertMarkdownLine(line string) string {
 		anchor := generateAnchor(title)
 		return fmt.Sprintf(`<h1 id="%s">%s</h1>`, anchor, html.EscapeString(title))
 	}
-	
+
 	// Horizontal rule
 	if strings.TrimSpace(line) == "---" {
 		return "<hr>"
 	}
-	
+
 	// Lists
 	if strings.HasPrefix(line, "- ") {
 		return "<li>" + processInlineMarkdown(html.EscapeString(strings.TrimSpace(line[2:]))) + "</li>"
 	}
-	
+
 	// Regular paragraph
 	return "<p>" + processInlineMarkdown(html.EscapeString(line)) + "</p>"
 }
@@ -434,11 +434,11 @@ func processInlineMarkdown(text string) string {
 	// Bold text
 	boldRe := regexp.MustCompile(`\*\*([^*]+)\*\*`)
 	text = boldRe.ReplaceAllString(text, "<strong>$1</strong>")
-	
+
 	// Inline code - be careful not to double-escape
 	codeRe := regexp.MustCompile("`([^`]+)`")
 	text = codeRe.ReplaceAllString(text, "<code>$1</code>")
-	
+
 	return text
 }
 
@@ -463,13 +463,13 @@ func getHeaderLevel(line string) int {
 // generateAnchor generates a URL-safe anchor from a title
 func generateAnchor(title string) string {
 	anchor := strings.ToLower(title)
-	
+
 	// Replace spaces and special characters with hyphens
 	reg := regexp.MustCompile(`[^a-z0-9]+`)
 	anchor = reg.ReplaceAllString(anchor, "-")
-	
+
 	anchor = strings.Trim(anchor, "-")
-	
+
 	return anchor
 }
 

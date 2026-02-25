@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package database
 
 import (
@@ -35,48 +34,48 @@ func InsertAIInsight(db *sqlx.DB, insight *AIInsight) error {
 // GetAIMetrics calculates aggregated AI performance metrics.
 func GetAIMetrics(db *sqlx.DB) (*AIMetrics, error) {
 	var metrics AIMetrics
-	
+
 	// Get total insights count
 	err := db.Get(&metrics.TotalInsights, "SELECT COUNT(*) FROM ai_insights")
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Get average response time (only for records with response_time_ms > 0)
-	err = db.Get(&metrics.AvgResponseTimeMs, 
+	err = db.Get(&metrics.AvgResponseTimeMs,
 		"SELECT COALESCE(AVG(response_time_ms), 0) FROM ai_insights WHERE response_time_ms > 0")
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Calculate accuracy rate based on resolved insights with positive feedback
 	var resolvedCount, accurateCount int
 	err = db.Get(&resolvedCount, "SELECT COUNT(*) FROM ai_insights WHERE resolution_status = 'resolved'")
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if resolvedCount > 0 {
-		err = db.Get(&accurateCount, 
+		err = db.Get(&accurateCount,
 			"SELECT COUNT(*) FROM ai_insights WHERE resolution_status = 'resolved' AND (accuracy_score >= 0.7 OR user_feedback LIKE '%helpful%' OR user_feedback LIKE '%accurate%')")
 		if err != nil {
 			return nil, err
 		}
 		metrics.AccuracyRate = float64(accurateCount) / float64(resolvedCount) * 100
 	}
-	
+
 	// Get anomaly and recommendation counts
 	err = db.Get(&metrics.AnomalyCount, "SELECT COUNT(*) FROM ai_insights WHERE insight_type = 'anomaly'")
 	if err != nil {
 		return nil, err
 	}
-	
-	err = db.Get(&metrics.RecommendationCount, 
+
+	err = db.Get(&metrics.RecommendationCount,
 		"SELECT COUNT(*) FROM ai_insights WHERE insight_type IN ('optimization', 'recommendation')")
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &metrics, nil
 }
 
@@ -87,7 +86,7 @@ func GenerateEnhancedAIInsight(db *sqlx.DB, aiClient interface{}, jobID string, 
 	if err != nil {
 		return fmt.Errorf("failed to get metrics for AI analysis: %v", err)
 	}
-	
+
 	// Get recent operation logs (last 30 minutes)
 	logEntries, err := analysis.GetLogsForJob(logger.GetProductionLogDir(), jobID, time.Now().Add(-30*time.Minute))
 	if err != nil {
@@ -97,7 +96,7 @@ func GenerateEnhancedAIInsight(db *sqlx.DB, aiClient interface{}, jobID string, 
 	if err != nil {
 		return fmt.Errorf("failed to format logs for AI analysis: %v", err)
 	}
-	
+
 	// Type assert the AI client for different analysis types with response time tracking
 	type enhancedAIClient interface {
 		GetEnhancedInsightsWithResponseTime(ctx context.Context, metrics string, logs string) (string, int, error)
@@ -108,22 +107,22 @@ func GenerateEnhancedAIInsight(db *sqlx.DB, aiClient interface{}, jobID string, 
 		GetLogPatternAnalysis(ctx context.Context, logs string) (string, error)
 		GetAnomalyDetection(ctx context.Context, metrics string) (string, error)
 	}
-	
+
 	type incidentAIClient interface {
 		GetIncidentAnalysisWithResponseTime(ctx context.Context, eventDetails string) (string, int, error)
 		GetIncidentAnalysis(ctx context.Context, eventDetails string) (string, error)
 	}
-	
+
 	type perfAIClient interface {
 		GetPerformanceRecommendationWithResponseTime(ctx context.Context, metrics string) (string, int, error)
 		GetPerformanceRecommendation(ctx context.Context, metrics string) (string, error)
 	}
-	
+
 	ctx := context.Background()
 	var recommendation string
 	var severityLevel string
 	var responseTimeMs int
-	
+
 	switch insightType {
 	case "enhanced_analysis":
 		client, ok := aiClient.(enhancedAIClient)
@@ -179,11 +178,11 @@ func GenerateEnhancedAIInsight(db *sqlx.DB, aiClient interface{}, jobID string, 
 	default:
 		return fmt.Errorf("unsupported insight type: %s", insightType)
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to generate AI insight: %v", err)
 	}
-	
+
 	// Store the insight with response time
 	insight := &AIInsight{
 		JobID:          &jobID,
@@ -193,7 +192,7 @@ func GenerateEnhancedAIInsight(db *sqlx.DB, aiClient interface{}, jobID string, 
 		Recommendation: recommendation,
 		ResponseTimeMs: responseTimeMs,
 	}
-	
+
 	return InsertAIInsight(db, insight)
 }
 
@@ -278,7 +277,7 @@ func extractErrorCount(logs string) int {
 // GetAggregatedMetricsForAI retrieves and formats metrics data for AI analysis
 func GetAggregatedMetricsForAI(db *sqlx.DB, jobID string, minutes int) (string, error) {
 	since := time.Now().Add(-time.Duration(minutes) * time.Minute)
-	
+
 	query := `SELECT 
 				messages_replicated_delta AS messages_replicated,
 				bytes_transferred_delta AS bytes_transferred,
@@ -288,33 +287,33 @@ func GetAggregatedMetricsForAI(db *sqlx.DB, jobID string, minutes int) (string, 
 			  FROM aggregated_metrics 
 			  WHERE job_id = ? AND timestamp >= ? 
 			  ORDER BY timestamp DESC LIMIT 100`
-	
+
 	var metrics []ReplicationMetric
 	err := db.Select(&metrics, query, jobID, since)
 	if err != nil {
 		return "", err
 	}
-	
+
 	if len(metrics) == 0 {
 		return "No recent metrics found for analysis.", nil
 	}
-	
+
 	// Format metrics for AI analysis
 	type MetricsSummary struct {
-		JobID              string  `json:"job_id"`
-		TimeWindow         string  `json:"time_window"`
-		TotalMessages      int64   `json:"total_messages"`
-		TotalBytes         int64   `json:"total_bytes"`
-		AvgThroughput      float64 `json:"avg_throughput_msg_per_sec"`
-		MaxLag             int     `json:"max_lag"`
-		TotalErrors        int64   `json:"total_errors"`
-		DataPoints         int     `json:"data_points"`
-		LatestTimestamp    string  `json:"latest_timestamp"`
+		JobID           string  `json:"job_id"`
+		TimeWindow      string  `json:"time_window"`
+		TotalMessages   int64   `json:"total_messages"`
+		TotalBytes      int64   `json:"total_bytes"`
+		AvgThroughput   float64 `json:"avg_throughput_msg_per_sec"`
+		MaxLag          int     `json:"max_lag"`
+		TotalErrors     int64   `json:"total_errors"`
+		DataPoints      int     `json:"data_points"`
+		LatestTimestamp string  `json:"latest_timestamp"`
 	}
-	
+
 	var totalMessages, totalBytes, totalErrors int64
 	var maxLag int
-	
+
 	for _, metric := range metrics {
 		totalMessages += int64(metric.MessagesReplicated)
 		totalBytes += int64(metric.BytesTransferred)
@@ -323,11 +322,11 @@ func GetAggregatedMetricsForAI(db *sqlx.DB, jobID string, minutes int) (string, 
 			maxLag = metric.CurrentLag
 		}
 	}
-	
+
 	// Calculate average throughput (messages per second over time window)
 	timeWindowSeconds := float64(minutes * 60)
 	avgThroughput := float64(totalMessages) / timeWindowSeconds
-	
+
 	summary := MetricsSummary{
 		JobID:           jobID,
 		TimeWindow:      fmt.Sprintf("%d minutes", minutes),
@@ -339,12 +338,12 @@ func GetAggregatedMetricsForAI(db *sqlx.DB, jobID string, minutes int) (string, 
 		DataPoints:      len(metrics),
 		LatestTimestamp: metrics[0].Timestamp.Format("2006-01-02 15:04:05"),
 	}
-	
+
 	summaryBytes, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
 		return "", err
 	}
-	
+
 	return string(summaryBytes), nil
 }
 

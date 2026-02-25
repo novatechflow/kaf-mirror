@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package server
 
 import (
@@ -487,14 +486,14 @@ func (s *Server) handleListJobs(c *fiber.Ctx) error {
 }
 
 type CreateJobRequest struct {
-	Name               string                   `json:"name"`
-	SourceClusterName  string                   `json:"source_cluster_name"`
-	TargetClusterName  string                   `json:"target_cluster_name"`
+	Name               string                  `json:"name"`
+	SourceClusterName  string                  `json:"source_cluster_name"`
+	TargetClusterName  string                  `json:"target_cluster_name"`
 	TopicMappings      []database.TopicMapping `json:"topic_mappings"`
-	BatchSize          int                      `json:"batch_size"`
-	Parallelism        int                      `json:"parallelism"`
-	Compression        string                   `json:"compression"`
-	PreservePartitions bool                     `json:"preserve_partitions"`
+	BatchSize          int                     `json:"batch_size"`
+	Parallelism        int                     `json:"parallelism"`
+	Compression        string                  `json:"compression"`
+	PreservePartitions bool                    `json:"preserve_partitions"`
 }
 
 // handleCreateJob godoc
@@ -1059,13 +1058,13 @@ func (s *Server) handleTestAIIntegration(c *fiber.Ctx) error {
 		log.Printf("AI integration test successful. Insight: %s, Response time: %dms", insight, responseTimeMs)
 
 		aiInsight := &database.AIInsight{
-			JobID:             nil, // Test insight
-			InsightType:       "anomaly",
-			Recommendation:    "TEST: " + insight,
-			SeverityLevel:     "info",
+			JobID:            nil, // Test insight
+			InsightType:      "anomaly",
+			Recommendation:   "TEST: " + insight,
+			SeverityLevel:    "info",
 			ResolutionStatus: "new",
-			AIModel:           s.cfg.AI.Model,
-			ResponseTimeMs:    responseTimeMs,
+			AIModel:          s.cfg.AI.Model,
+			ResponseTimeMs:   responseTimeMs,
 		}
 
 		if err := database.InsertAIInsight(s.Db, aiInsight); err != nil {
@@ -1747,12 +1746,12 @@ func (s *Server) handleGetInventorySnapshot(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid snapshot ID")
 	}
-	
+
 	inventoryData, err := database.GetFullInventoryData(s.Db, snapshotID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Inventory snapshot not found")
 	}
-	
+
 	// Fix empty compression types to show "NONE"
 	for i := range inventoryData.SourceTopics {
 		if inventoryData.SourceTopics[i].CompressionType == "" {
@@ -1764,7 +1763,7 @@ func (s *Server) handleGetInventorySnapshot(c *fiber.Ctx) error {
 			inventoryData.TargetTopics[i].CompressionType = "NONE"
 		}
 	}
-	
+
 	return c.JSON(inventoryData)
 }
 
@@ -1778,25 +1777,25 @@ func (s *Server) handleGetInventorySnapshot(c *fiber.Ctx) error {
 // @Security ApiKeyAuth
 func (s *Server) handleCreateManualInventorySnapshot(c *fiber.Ctx) error {
 	jobID := c.Params("id")
-	
+
 	job, err := database.GetJob(s.Db, jobID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Job not found")
 	}
-	
+
 	if job.Status != "active" {
 		return fiber.NewError(fiber.StatusBadRequest, "Job must be active to create inventory snapshot")
 	}
-	
+
 	go func() {
 		// Manual inventory snapshot creation would need to be implemented in manager
 		// For now, return success - implementation would be added later
 	}()
-	
+
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"status": "success",
+		"status":  "success",
 		"message": "Manual inventory snapshot creation initiated",
-		"job_id": jobID,
+		"job_id":  jobID,
 	})
 }
 
@@ -1815,23 +1814,23 @@ func (s *Server) handleGetClusterInventory(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid snapshot ID")
 	}
-	
+
 	clusterType := c.Query("cluster_type")
 	if clusterType != "source" && clusterType != "target" {
 		return fiber.NewError(fiber.StatusBadRequest, "cluster_type must be 'source' or 'target'")
 	}
-	
+
 	inventoryData, err := database.GetFullInventoryData(s.Db, snapshotID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Inventory snapshot not found")
 	}
-	
+
 	if clusterType == "source" && inventoryData.SourceCluster != nil {
 		return c.JSON(inventoryData.SourceCluster)
 	} else if clusterType == "target" && inventoryData.TargetCluster != nil {
 		return c.JSON(inventoryData.TargetCluster)
 	}
-	
+
 	return fiber.NewError(fiber.StatusNotFound, "Cluster inventory not found")
 }
 
@@ -1850,17 +1849,17 @@ func (s *Server) handleGetTopicInventory(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid snapshot ID")
 	}
-	
+
 	clusterType := c.Query("cluster_type")
 	if clusterType != "source" && clusterType != "target" {
 		return fiber.NewError(fiber.StatusBadRequest, "cluster_type must be 'source' or 'target'")
 	}
-	
+
 	inventoryData, err := database.GetFullInventoryData(s.Db, snapshotID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Inventory snapshot not found")
 	}
-	
+
 	// Fix empty compression types to show "NONE"
 	if clusterType == "source" {
 		for i := range inventoryData.SourceTopics {
@@ -1893,12 +1892,12 @@ func (s *Server) handleGetConsumerGroupInventory(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid snapshot ID")
 	}
-	
+
 	inventoryData, err := database.GetFullInventoryData(s.Db, snapshotID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Inventory snapshot not found")
 	}
-	
+
 	return c.JSON(inventoryData.ConsumerGroups)
 }
 
@@ -1916,12 +1915,12 @@ func (s *Server) handleGetConnectionInventory(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid snapshot ID")
 	}
-	
+
 	inventoryData, err := database.GetFullInventoryData(s.Db, snapshotID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Inventory snapshot not found")
 	}
-	
+
 	return c.JSON(inventoryData.Connections)
 }
 
@@ -1944,47 +1943,47 @@ func (s *Server) handleGetConnectionInventory(c *fiber.Ctx) error {
 func (s *Server) handleGetMirrorState(c *fiber.Ctx) error {
 	jobID := c.Params("id")
 	period := c.Query("period")
-	
+
 	var stateData *database.MirrorStateData
 	var err error
-	
+
 	// If no period parameter provided, return only the latest state
 	if period == "" {
 		stateData, err = database.GetMirrorStateData(s.Db, jobID)
 		if err != nil {
 			return fiber.NewError(fiber.StatusNotFound, "Mirror state data not found for job")
 		}
-		
+
 		// Convert arrays to single objects for latest state response
 		response := fiber.Map{
 			"job_id": stateData.JobID,
 		}
-		
+
 		// Return single object or null for each category
 		if len(stateData.MirrorProgress) > 0 {
 			response["mirror_progress"] = stateData.MirrorProgress[0]
 		} else {
 			response["mirror_progress"] = nil
 		}
-		
+
 		if len(stateData.ResumePoints) > 0 {
 			response["resume_points"] = stateData.ResumePoints[0]
 		} else {
 			response["resume_points"] = nil
 		}
-		
+
 		if len(stateData.MirrorGaps) > 0 {
 			response["mirror_gaps"] = stateData.MirrorGaps[0]
 		} else {
 			response["mirror_gaps"] = nil
 		}
-		
+
 		if len(stateData.StateAnalysis) > 0 {
 			response["state_analysis"] = stateData.StateAnalysis[0]
 		} else {
 			response["state_analysis"] = nil
 		}
-		
+
 		return c.JSON(response)
 	} else {
 		// Validate period parameter
@@ -1994,14 +1993,14 @@ func (s *Server) handleGetMirrorState(c *fiber.Ctx) error {
 		if !validPeriods[period] {
 			return fiber.NewError(fiber.StatusBadRequest, "Invalid period. Must be one of: today, yesterday, this-week, last-week")
 		}
-		
+
 		// Calculate time range based on period and return historical data
 		startTime, endTime := s.calculateTimeRange(period)
 		stateData, err = database.GetMirrorStateDataForPeriod(s.Db, jobID, startTime, endTime)
 		if err != nil {
 			return fiber.NewError(fiber.StatusNotFound, "Mirror state data not found for job")
 		}
-		
+
 		// Return arrays for historical data
 		return c.JSON(stateData)
 	}
@@ -2010,20 +2009,20 @@ func (s *Server) handleGetMirrorState(c *fiber.Ctx) error {
 // calculateTimeRange returns start and end times for calendar-based periods
 func (s *Server) calculateTimeRange(period string) (time.Time, time.Time) {
 	now := time.Now()
-	
+
 	switch period {
 	case "today":
 		// Current day: 00:00 to now
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		return start, now
-		
-	case "yesterday": 
+
+	case "yesterday":
 		// Previous complete day: 00:00 to 23:59 of yesterday
 		yesterday := now.AddDate(0, 0, -1)
 		start := time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, now.Location())
 		end := time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 23, 59, 59, 999999999, now.Location())
 		return start, end
-		
+
 	case "this-week":
 		// Current week: Monday 00:00 to now
 		weekday := int(now.Weekday())
@@ -2034,21 +2033,21 @@ func (s *Server) calculateTimeRange(period string) (time.Time, time.Time) {
 		monday := now.AddDate(0, 0, -daysToMonday)
 		start := time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, now.Location())
 		return start, now
-		
+
 	case "last-week":
 		// Previous complete week: Monday 00:00 to Sunday 23:59 of last week
 		weekday := int(now.Weekday())
-		if weekday == 0 { // Sunday = 0, we want Monday = 0  
+		if weekday == 0 { // Sunday = 0, we want Monday = 0
 			weekday = 7
 		}
 		daysToLastMonday := weekday - 1 + 7 // Go back to previous week's Monday
 		lastMonday := now.AddDate(0, 0, -daysToLastMonday)
 		lastSunday := lastMonday.AddDate(0, 0, 6)
-		
+
 		start := time.Date(lastMonday.Year(), lastMonday.Month(), lastMonday.Day(), 0, 0, 0, 0, now.Location())
 		end := time.Date(lastSunday.Year(), lastSunday.Month(), lastSunday.Day(), 23, 59, 59, 999999999, now.Location())
 		return start, end
-		
+
 	default:
 		// Default to today
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -2070,12 +2069,12 @@ func (s *Server) calculateTimeRange(period string) (time.Time, time.Time) {
 // @Security ApiKeyAuth
 func (s *Server) handleGetMirrorProgress(c *fiber.Ctx) error {
 	jobID := c.Params("id")
-	
+
 	progress, err := database.GetMirrorProgress(s.Db, jobID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to get mirror progress")
 	}
-	
+
 	return c.JSON(progress)
 }
 
@@ -2093,12 +2092,12 @@ func (s *Server) handleGetMirrorProgress(c *fiber.Ctx) error {
 // @Security ApiKeyAuth
 func (s *Server) handleGetResumePoints(c *fiber.Ctx) error {
 	jobID := c.Params("id")
-	
+
 	resumePoints, err := database.GetResumePoints(s.Db, jobID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to get resume points")
 	}
-	
+
 	return c.JSON(resumePoints)
 }
 
@@ -2116,23 +2115,23 @@ func (s *Server) handleGetResumePoints(c *fiber.Ctx) error {
 // @Security ApiKeyAuth
 func (s *Server) handleCalculateResumePoints(c *fiber.Ctx) error {
 	jobID := c.Params("id")
-	
+
 	job, err := database.GetJob(s.Db, jobID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Job not found")
 	}
-	
+
 	// Get source and target clusters
 	sourceCluster, err := database.GetCluster(s.Db, job.SourceClusterName)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Source cluster not found")
 	}
-	
+
 	targetCluster, err := database.GetCluster(s.Db, job.TargetClusterName)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Target cluster not found")
 	}
-	
+
 	// Create cluster configs
 	sourceConfig := config.ClusterConfig{
 		Provider: sourceCluster.Provider,
@@ -2142,7 +2141,7 @@ func (s *Server) handleCalculateResumePoints(c *fiber.Ctx) error {
 			APISecret: sourceCluster.APISecret,
 		},
 	}
-	
+
 	targetConfig := config.ClusterConfig{
 		Provider: targetCluster.Provider,
 		Brokers:  targetCluster.Brokers,
@@ -2151,23 +2150,23 @@ func (s *Server) handleCalculateResumePoints(c *fiber.Ctx) error {
 			APISecret: targetCluster.APISecret,
 		},
 	}
-	
+
 	// Get topic mappings
 	mappings, err := database.GetMappingsForJob(s.Db, jobID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to get topic mappings")
 	}
-	
+
 	topicMap := make(map[string]string)
 	for _, mapping := range mappings {
 		if mapping.Enabled {
 			topicMap[mapping.SourceTopicPattern] = mapping.TargetTopicPattern
 		}
 	}
-	
+
 	go func() {
 		ctx := context.Background()
-		
+
 		// Create admin clients
 		sourceAdmin, err := kafka.NewAdminClient(sourceConfig)
 		if err != nil {
@@ -2175,14 +2174,14 @@ func (s *Server) handleCalculateResumePoints(c *fiber.Ctx) error {
 			return
 		}
 		defer sourceAdmin.Close()
-		
+
 		targetAdmin, err := kafka.NewAdminClient(targetConfig)
 		if err != nil {
 			log.Printf("Failed to create target admin client for resume point calculation: %v", err)
 			return
 		}
 		defer targetAdmin.Close()
-		
+
 		// Calculate resume points
 		consumerGroup := fmt.Sprintf("kaf-mirror-job-%s", jobID)
 		resumePoints, err := targetAdmin.CalculateSafeResumePoints(ctx, sourceAdmin, jobID, topicMap, consumerGroup)
@@ -2190,17 +2189,17 @@ func (s *Server) handleCalculateResumePoints(c *fiber.Ctx) error {
 			log.Printf("Failed to calculate resume points for job %s: %v", jobID, err)
 			return
 		}
-		
+
 		// Store resume points in database
 		err = database.CalculateResumePoints(s.Db, jobID, resumePoints, nil)
 		if err != nil {
 			log.Printf("Failed to store resume points for job %s: %v", jobID, err)
 			return
 		}
-		
+
 		log.Printf("Successfully calculated and stored resume points for job %s", jobID)
 	}()
-	
+
 	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Resume point calculation started",
@@ -2222,12 +2221,12 @@ func (s *Server) handleCalculateResumePoints(c *fiber.Ctx) error {
 // @Security ApiKeyAuth
 func (s *Server) handleGetMirrorGaps(c *fiber.Ctx) error {
 	jobID := c.Params("id")
-	
+
 	gaps, err := database.GetMirrorGaps(s.Db, jobID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to get mirror gaps")
 	}
-	
+
 	return c.JSON(gaps)
 }
 
@@ -2245,36 +2244,36 @@ func (s *Server) handleGetMirrorGaps(c *fiber.Ctx) error {
 // @Security ApiKeyAuth
 func (s *Server) handleValidateMigration(c *fiber.Ctx) error {
 	jobID := c.Params("id")
-	
+
 	job, err := database.GetJob(s.Db, jobID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Job not found")
 	}
-	
+
 	// Get source and target clusters
 	sourceCluster, err := database.GetCluster(s.Db, job.SourceClusterName)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Source cluster not found")
 	}
-	
+
 	targetCluster, err := database.GetCluster(s.Db, job.TargetClusterName)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "Target cluster not found")
 	}
-	
+
 	// Get topic mappings
 	mappings, err := database.GetMappingsForJob(s.Db, jobID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to get topic mappings")
 	}
-	
+
 	topicMap := make(map[string]string)
 	for _, mapping := range mappings {
 		if mapping.Enabled {
 			topicMap[mapping.SourceTopicPattern] = mapping.TargetTopicPattern
 		}
 	}
-	
+
 	// Create cluster configs
 	sourceConfig := config.ClusterConfig{
 		Provider: sourceCluster.Provider,
@@ -2284,7 +2283,7 @@ func (s *Server) handleValidateMigration(c *fiber.Ctx) error {
 			APISecret: sourceCluster.APISecret,
 		},
 	}
-	
+
 	targetConfig := config.ClusterConfig{
 		Provider: targetCluster.Provider,
 		Brokers:  targetCluster.Brokers,
@@ -2293,45 +2292,45 @@ func (s *Server) handleValidateMigration(c *fiber.Ctx) error {
 			APISecret: targetCluster.APISecret,
 		},
 	}
-	
+
 	ctx := context.Background()
-	
+
 	// Create admin clients
 	sourceAdmin, err := kafka.NewAdminClient(sourceConfig)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create source admin client")
 	}
 	defer sourceAdmin.Close()
-	
+
 	targetAdmin, err := kafka.NewAdminClient(targetConfig)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create target admin client")
 	}
 	defer targetAdmin.Close()
-	
+
 	// Perform cross-cluster offset comparison
 	offsetComparison, err := targetAdmin.CompareClusterOffsets(ctx, sourceAdmin, topicMap)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to compare cluster offsets")
 	}
-	
+
 	// Analyze mirror state
 	consumerGroup := fmt.Sprintf("kaf-mirror-job-%s", jobID)
 	mirrorAnalysis, err := targetAdmin.AnalyzeMirrorState(ctx, sourceAdmin, jobID, topicMap, consumerGroup)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to analyze mirror state")
 	}
-	
+
 	// Determine migration safety
 	migrationSafe := offsetComparison.TotalGapsDetected == 0 && len(offsetComparison.CriticalIssues) == 0
 	riskLevel := "low"
-	
+
 	if offsetComparison.TotalGapsDetected > 0 {
 		riskLevel = "high"
 	} else if len(offsetComparison.Warnings) > 0 {
 		riskLevel = "medium"
 	}
-	
+
 	recommendations := make([]string, 0)
 	if !migrationSafe {
 		recommendations = append(recommendations, "Migration not recommended due to detected gaps or critical issues")
@@ -2340,20 +2339,20 @@ func (s *Server) handleValidateMigration(c *fiber.Ctx) error {
 		recommendations = append(recommendations, "Migration appears safe to proceed")
 		recommendations = append(recommendations, "Monitor replication closely after migration")
 	}
-	
+
 	result := fiber.Map{
-		"job_id":             jobID,
-		"migration_safe":     migrationSafe,
-		"risk_level":         riskLevel,
-		"gaps_detected":      offsetComparison.TotalGapsDetected,
-		"critical_issues":    len(offsetComparison.CriticalIssues),
-		"warnings":           len(offsetComparison.Warnings),
-		"offset_comparison":  offsetComparison,
-		"mirror_analysis":    mirrorAnalysis,
-		"recommendations":    recommendations,
-		"validated_at":       time.Now(),
+		"job_id":            jobID,
+		"migration_safe":    migrationSafe,
+		"risk_level":        riskLevel,
+		"gaps_detected":     offsetComparison.TotalGapsDetected,
+		"critical_issues":   len(offsetComparison.CriticalIssues),
+		"warnings":          len(offsetComparison.Warnings),
+		"offset_comparison": offsetComparison,
+		"mirror_analysis":   mirrorAnalysis,
+		"recommendations":   recommendations,
+		"validated_at":      time.Now(),
 	}
-	
+
 	return c.JSON(result)
 }
 
@@ -2372,35 +2371,35 @@ func (s *Server) handleValidateMigration(c *fiber.Ctx) error {
 // @Security ApiKeyAuth
 func (s *Server) handleCreateMigrationCheckpoint(c *fiber.Ctx) error {
 	jobID := c.Params("id")
-	
+
 	var request struct {
 		MigrationReason string `json:"migration_reason"`
 		CheckpointType  string `json:"checkpoint_type"`
 	}
-	
+
 	if err := c.BodyParser(&request); err != nil {
 		request.MigrationReason = "Manual checkpoint"
 		request.CheckpointType = "pre_migration"
 	}
-	
+
 	user := c.Locals("user").(*database.User)
-	
+
 	checkpoint := database.MigrationCheckpoint{
-		JobID:                       jobID,
-		CheckpointType:              request.CheckpointType,
-		SourceConsumerGroupOffsets:  "{}",  // Would be populated with actual data
-		TargetHighWaterMarks:        "{}",  // Would be populated with actual data
-		CreatedAt:                   time.Now(),
-		CreatedBy:                   user.Username,
-		MigrationReason:             &request.MigrationReason,
-		ValidationResults:           nil,
+		JobID:                      jobID,
+		CheckpointType:             request.CheckpointType,
+		SourceConsumerGroupOffsets: "{}", // Would be populated with actual data
+		TargetHighWaterMarks:       "{}", // Would be populated with actual data
+		CreatedAt:                  time.Now(),
+		CreatedBy:                  user.Username,
+		MigrationReason:            &request.MigrationReason,
+		ValidationResults:          nil,
 	}
-	
+
 	checkpointID, err := database.CreateMigrationCheckpoint(s.Db, checkpoint)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create migration checkpoint")
 	}
-	
+
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"status":        "success",
 		"message":       "Migration checkpoint created",

@@ -388,9 +388,9 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 			fmt.Println("  USER CREATED")
 			fmt.Println("=================================================================")
 			fmt.Printf("  Username: %s\n", username)
-			fmt.Printf("  Password: %s\n", password)
+			fmt.Println("  Password: [REDACTED]")
 			fmt.Println("=================================================================")
-			fmt.Println("  Please store this password in a secure location.")
+			fmt.Println("  Deliver credentials securely to the user.")
 			fmt.Println("=================================================================")
 		},
 	}
@@ -685,7 +685,7 @@ It interacts with the kaf-mirror API to perform various tasks.`,
 			fmt.Println("=================================================================")
 			fmt.Printf("  Username: %s\n", username)
 			fmt.Println("  New Password: ********")
-			fmt.Printf("  Password File: %s\n", outputPath)
+			fmt.Println("  Password File: [REDACTED]")
 			fmt.Println("=================================================================")
 			fmt.Println("  Please provide this password to the user securely.")
 			fmt.Println("  Delete the password file after delivery.")

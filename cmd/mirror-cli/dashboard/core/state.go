@@ -63,14 +63,14 @@ func (nc *NavigationContext) NavigateToCategory(category Category) {
 	nc.Category = category
 	nc.ItemID = ""
 	nc.PaneFocus = ListPaneFocus // Default to list pane
-	
+
 	categoryNames := map[Category]string{
 		ClustersCategory:   "Clusters",
 		JobsCategory:       "Jobs",
 		InsightsCategory:   "Insights",
 		ComplianceCategory: "Compliance",
 	}
-	
+
 	nc.Breadcrumbs = []string{"Dashboard", categoryNames[category]}
 	nc.LastUpdate = time.Now()
 }
@@ -78,13 +78,13 @@ func (nc *NavigationContext) NavigateToCategory(category Category) {
 func (nc *NavigationContext) NavigateToDetail(itemID, itemName string) {
 	nc.State = DetailViewState
 	nc.ItemID = itemID
-	
+
 	if len(nc.Breadcrumbs) == 2 {
 		nc.Breadcrumbs = append(nc.Breadcrumbs, itemName)
 	} else if len(nc.Breadcrumbs) >= 3 {
 		nc.Breadcrumbs[2] = itemName
 	}
-	
+
 	nc.LastUpdate = time.Now()
 }
 

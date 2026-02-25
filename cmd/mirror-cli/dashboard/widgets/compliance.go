@@ -11,14 +11,14 @@ type ComplianceFactory struct {
 
 func NewComplianceFactory() *ComplianceFactory {
 	base := NewBaseWidgetFactory()
-	
+
 	cf := &ComplianceFactory{
 		BaseWidgetFactory: base,
 	}
-	
+
 	cf.listWidget.Title = "Compliance Logs (Press Enter for details, R to refresh)"
 	cf.detailWidget.Title = "Audit Log Details"
-	
+
 	return cf
 }
 
@@ -31,13 +31,13 @@ func (cf *ComplianceFactory) UpdateListData(dataManager *core.DataManager) error
 		}
 		return err
 	}
-	
+
 	cf.items = logs
-	
+
 	rows := []string{
 		"Timestamp | User | Action | Resource | Result",
 	}
-	
+
 	if len(logs) == 0 {
 		rows = append(rows, "No audit logs found")
 	} else {
@@ -47,7 +47,7 @@ func (cf *ComplianceFactory) UpdateListData(dataManager *core.DataManager) error
 			action := SafeString(log["event_type"], "unknown")
 			resource := SafeString(log["resource_type"], "N/A")
 			result := SafeString(log["status"], "unknown")
-			
+
 			row := fmt.Sprintf("%s | %s | %s | %s | %s",
 				TruncateString(timestamp, 16),
 				TruncateString(user, 12),
@@ -55,13 +55,13 @@ func (cf *ComplianceFactory) UpdateListData(dataManager *core.DataManager) error
 				TruncateString(resource, 12),
 				FormatStatus(result),
 			)
-			
+
 			rows = append(rows, row)
 		}
 	}
-	
+
 	cf.listWidget.Rows = rows
-	
+
 	if cf.selectedIdx >= len(cf.items) {
 		cf.selectedIdx = len(cf.items) - 1
 	}
@@ -71,7 +71,7 @@ func (cf *ComplianceFactory) UpdateListData(dataManager *core.DataManager) error
 	if len(cf.items) > 0 {
 		cf.listWidget.SelectedRow = cf.selectedIdx + 1
 	}
-	
+
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (cf *ComplianceFactory) UpdateDetailData(dataManager *core.DataManager, ite
 		cf.detailWidget.Rows = []string{"Select an audit log entry to view details"}
 		return nil
 	}
-	
+
 	logs, err := dataManager.GetLogs()
 	if err != nil {
 		cf.detailWidget.Rows = []string{
@@ -89,7 +89,7 @@ func (cf *ComplianceFactory) UpdateDetailData(dataManager *core.DataManager, ite
 		}
 		return err
 	}
-	
+
 	var selectedLog map[string]interface{}
 	for _, log := range logs {
 		if SafeString(log["id"], "") == itemID {
@@ -97,14 +97,14 @@ func (cf *ComplianceFactory) UpdateDetailData(dataManager *core.DataManager, ite
 			break
 		}
 	}
-	
+
 	if selectedLog == nil {
 		cf.detailWidget.Rows = []string{"Log entry not found"}
 		return nil
 	}
-	
+
 	var rows []string
-	
+
 	rows = append(rows, "=== AUDIT LOG ENTRY ===")
 	rows = append(rows, fmt.Sprintf("Timestamp: %s", SafeString(selectedLog["timestamp"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Event Type: %s", SafeString(selectedLog["event_type"], "N/A")))
@@ -112,10 +112,10 @@ func (cf *ComplianceFactory) UpdateDetailData(dataManager *core.DataManager, ite
 	rows = append(rows, fmt.Sprintf("Resource Type: %s", SafeString(selectedLog["resource_type"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Resource ID: %s", SafeString(selectedLog["resource_id"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Status: %s", FormatStatus(SafeString(selectedLog["status"], "N/A"))))
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== EVENT DETAILS ===")
-	
+
 	details := SafeString(selectedLog["details"], "No additional details available")
 	// Split long details into multiple lines
 	for len(details) > 0 {
@@ -136,10 +136,10 @@ func (cf *ComplianceFactory) UpdateDetailData(dataManager *core.DataManager, ite
 			details = details[1:]
 		}
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== COMPLIANCE CONTEXT ===")
-	
+
 	eventType := SafeString(selectedLog["event_type"], "")
 	switch eventType {
 	case "job_created", "job_updated", "job_deleted":
@@ -163,7 +163,7 @@ func (cf *ComplianceFactory) UpdateDetailData(dataManager *core.DataManager, ite
 		rows = append(rows, "Compliance Impact: Standard operational logging")
 		rows = append(rows, "Retention: 1 year per default policy")
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== AUDIT TRAIL ===")
 	if sourceIP := SafeString(selectedLog["source_ip"], ""); sourceIP != "" {
@@ -175,16 +175,16 @@ func (cf *ComplianceFactory) UpdateDetailData(dataManager *core.DataManager, ite
 	if sessionID := SafeString(selectedLog["session_id"], ""); sessionID != "" {
 		rows = append(rows, fmt.Sprintf("Session ID: %s", sessionID))
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== NAVIGATION ===")
 	rows = append(rows, "Press 'R' to refresh audit logs")
 	rows = append(rows, "Press 'B' or Escape to go back")
 	rows = append(rows, "Use audit export tools for compliance reporting")
-	
+
 	cf.detailWidget.Rows = rows
 	cf.detailWidget.Title = fmt.Sprintf("Audit Log: %s", SafeString(selectedLog["event_type"], itemID))
-	
+
 	return nil
 }
 

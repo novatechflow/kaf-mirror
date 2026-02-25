@@ -11,14 +11,14 @@ type InsightsFactory struct {
 
 func NewInsightsFactory() *InsightsFactory {
 	base := NewBaseWidgetFactory()
-	
+
 	inf := &InsightsFactory{
 		BaseWidgetFactory: base,
 	}
-	
+
 	inf.listWidget.Title = "AI Insights (Press Enter for details, R to refresh)"
 	inf.detailWidget.Title = "Insight Details"
-	
+
 	return inf
 }
 
@@ -31,13 +31,13 @@ func (inf *InsightsFactory) UpdateListData(dataManager *core.DataManager) error 
 		}
 		return err
 	}
-	
+
 	inf.items = insights
-	
+
 	rows := []string{
 		"Type | Timestamp | Severity | Job ID | Status",
 	}
-	
+
 	if len(insights) == 0 {
 		rows = append(rows, "No AI insights available")
 	} else {
@@ -47,7 +47,7 @@ func (inf *InsightsFactory) UpdateListData(dataManager *core.DataManager) error 
 			severity := SafeString(insight["severity_level"], "normal")
 			jobID := SafeString(insight["job_id"], "N/A")
 			status := SafeString(insight["resolution_status"], "pending")
-			
+
 			row := fmt.Sprintf("%s | %s | %s | %s | %s",
 				TruncateString(insightType, 12),
 				TruncateString(timestamp, 16),
@@ -55,13 +55,13 @@ func (inf *InsightsFactory) UpdateListData(dataManager *core.DataManager) error 
 				TruncateString(jobID, 12),
 				FormatStatus(status),
 			)
-			
+
 			rows = append(rows, row)
 		}
 	}
-	
+
 	inf.listWidget.Rows = rows
-	
+
 	if inf.selectedIdx >= len(inf.items) {
 		inf.selectedIdx = len(inf.items) - 1
 	}
@@ -71,7 +71,7 @@ func (inf *InsightsFactory) UpdateListData(dataManager *core.DataManager) error 
 	if len(inf.items) > 0 {
 		inf.listWidget.SelectedRow = inf.selectedIdx + 1
 	}
-	
+
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (inf *InsightsFactory) UpdateDetailData(dataManager *core.DataManager, item
 		inf.detailWidget.Rows = []string{"Select an AI insight to view details"}
 		return nil
 	}
-	
+
 	insights, err := dataManager.GetAIInsights()
 	if err != nil {
 		inf.detailWidget.Rows = []string{
@@ -89,7 +89,7 @@ func (inf *InsightsFactory) UpdateDetailData(dataManager *core.DataManager, item
 		}
 		return err
 	}
-	
+
 	var selectedInsight map[string]interface{}
 	for _, insight := range insights {
 		insightID := fmt.Sprintf("%v", insight["id"])
@@ -98,14 +98,14 @@ func (inf *InsightsFactory) UpdateDetailData(dataManager *core.DataManager, item
 			break
 		}
 	}
-	
+
 	if selectedInsight == nil {
 		inf.detailWidget.Rows = []string{"Insight not found"}
 		return nil
 	}
-	
+
 	var rows []string
-	
+
 	rows = append(rows, "=== AI INSIGHT DETAILS ===")
 	rows = append(rows, fmt.Sprintf("ID: %v", selectedInsight["id"]))
 	rows = append(rows, fmt.Sprintf("Type: %s", SafeString(selectedInsight["insight_type"], "N/A")))
@@ -113,20 +113,20 @@ func (inf *InsightsFactory) UpdateDetailData(dataManager *core.DataManager, item
 	rows = append(rows, fmt.Sprintf("Status: %s", FormatStatus(SafeString(selectedInsight["resolution_status"], "N/A"))))
 	rows = append(rows, fmt.Sprintf("Job ID: %s", SafeString(selectedInsight["job_id"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Created: %s", SafeString(selectedInsight["timestamp"], "N/A")))
-	
+
 	if resolvedAt := SafeString(selectedInsight["resolved_at"], ""); resolvedAt != "" {
 		rows = append(rows, fmt.Sprintf("Resolved: %s", resolvedAt))
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== AI MODEL & PERFORMANCE ===")
 	rows = append(rows, fmt.Sprintf("AI Model: %s", SafeString(selectedInsight["ai_model"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Response Time: %v ms", selectedInsight["response_time_ms"]))
 	rows = append(rows, fmt.Sprintf("Accuracy Score: %.2f", SafeFloat(selectedInsight["accuracy_score"], 0.0)))
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== RECOMMENDATION ===")
-	
+
 	recommendation := SafeString(selectedInsight["recommendation"], "No recommendations available")
 	for len(recommendation) > 0 {
 		if len(recommendation) <= 70 {
@@ -146,16 +146,16 @@ func (inf *InsightsFactory) UpdateDetailData(dataManager *core.DataManager, item
 			recommendation = recommendation[1:]
 		}
 	}
-	
+
 	if userFeedback := SafeString(selectedInsight["user_feedback"], ""); userFeedback != "" {
 		rows = append(rows, "")
 		rows = append(rows, "=== USER FEEDBACK ===")
 		rows = append(rows, userFeedback)
 	}
-	
+
 	inf.detailWidget.Rows = rows
 	inf.detailWidget.Title = fmt.Sprintf("AI Insight: %s", SafeString(selectedInsight["insight_type"], itemID))
-	
+
 	return nil
 }
 

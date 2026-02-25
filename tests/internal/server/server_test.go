@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package server_test
 
 import (
@@ -54,7 +53,7 @@ func setupTestServer(t *testing.T) *TestContext {
 	var adminRoleID int
 	err = db.Get(&adminRoleID, "SELECT id FROM roles WHERE name = 'admin'")
 	assert.NoError(t, err)
-	
+
 	err = database.AssignRoleToUser(db, testUser.ID, adminRoleID)
 	assert.NoError(t, err)
 
@@ -63,7 +62,7 @@ func setupTestServer(t *testing.T) *TestContext {
 
 	hub := server.NewHub()
 	jobManager := manager.New(db, cfg, hub)
-	
+
 	srv := server.New(cfg, db, jobManager, hub, "test")
 
 	return &TestContext{
@@ -89,7 +88,7 @@ func TestHealthCheck(t *testing.T) {
 	var healthResp map[string]interface{}
 	err = json.Unmarshal(body, &healthResp)
 	assert.NoError(t, err)
-	
+
 	// Check that status is "ok" and other expected fields exist
 	assert.Equal(t, "ok", healthResp["status"])
 	assert.Contains(t, healthResp, "timestamp")
@@ -190,7 +189,7 @@ func TestJobsAPI(t *testing.T) {
 
 	resp, err = ctx.Server.App.Test(req)
 	assert.NoError(t, err)
-	
+
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("Expected status 200 but got %d. Response: %s", resp.StatusCode, string(body))
@@ -294,7 +293,7 @@ func TestAuthenticationRequired(t *testing.T) {
 	// Test that requests without auth header get 401
 	req := httptest.NewRequest("GET", "/api/v1/jobs", nil)
 	// Deliberately NOT adding auth header
-	
+
 	resp, err := ctx.Server.App.Test(req)
 	assert.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
@@ -312,7 +311,7 @@ func TestInvalidToken(t *testing.T) {
 	// Test that requests with invalid token get 401
 	req := httptest.NewRequest("GET", "/api/v1/jobs", nil)
 	req.Header.Set("Authorization", "Bearer invalid-token")
-	
+
 	resp, err := ctx.Server.App.Test(req)
 	assert.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)

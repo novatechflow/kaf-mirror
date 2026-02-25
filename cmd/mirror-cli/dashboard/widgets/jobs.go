@@ -12,14 +12,14 @@ type JobsFactory struct {
 
 func NewJobsFactory() *JobsFactory {
 	base := NewBaseWidgetFactory()
-	
+
 	jf := &JobsFactory{
 		BaseWidgetFactory: base,
 	}
-	
+
 	jf.listWidget.Title = "Jobs (Press Enter for details, S/T/P/X for start/stop/pause/restart)"
 	jf.detailWidget.Title = "Job Details"
-	
+
 	return jf
 }
 
@@ -32,13 +32,13 @@ func (jf *JobsFactory) UpdateListData(dataManager *core.DataManager) error {
 		}
 		return err
 	}
-	
+
 	jf.items = jobs
-	
+
 	rows := []string{
 		"ID | Name | Status | Source→Target | Lag | Msgs/sec",
 	}
-	
+
 	if len(jobs) == 0 {
 		rows = append(rows, "No replication jobs found")
 	} else {
@@ -48,7 +48,7 @@ func (jf *JobsFactory) UpdateListData(dataManager *core.DataManager) error {
 			jobStatus := SafeString(job["status"], "unknown")
 			sourceCluster := SafeString(job["source_cluster_name"], "N/A")
 			targetCluster := SafeString(job["target_cluster_name"], "N/A")
-			
+
 			var lag, throughput string
 			metrics, err := dataManager.GetJobMetrics(jobID)
 			if err != nil {
@@ -58,12 +58,12 @@ func (jf *JobsFactory) UpdateListData(dataManager *core.DataManager) error {
 				lag = fmt.Sprintf("%.0f", SafeFloat(metrics["current_lag"], 0))
 				throughput = fmt.Sprintf("%.0f", SafeFloat(metrics["messages_replicated"], 0))
 			}
-			
+
 			jobName = TruncateString(jobName, 15)
-			sourceTarget := fmt.Sprintf("%s→%s", 
+			sourceTarget := fmt.Sprintf("%s→%s",
 				TruncateString(sourceCluster, 8),
 				TruncateString(targetCluster, 8))
-			
+
 			row := fmt.Sprintf("%s | %s | %s | %s | %s | %s",
 				TruncateString(jobID, 8),
 				jobName,
@@ -72,13 +72,13 @@ func (jf *JobsFactory) UpdateListData(dataManager *core.DataManager) error {
 				lag,
 				throughput,
 			)
-			
+
 			rows = append(rows, row)
 		}
 	}
-	
+
 	jf.listWidget.Rows = rows
-	
+
 	// Maintain selection within bounds
 	if jf.selectedIdx >= len(jf.items) {
 		jf.selectedIdx = len(jf.items) - 1
@@ -89,7 +89,7 @@ func (jf *JobsFactory) UpdateListData(dataManager *core.DataManager) error {
 	if len(jf.items) > 0 {
 		jf.listWidget.SelectedRow = jf.selectedIdx + 1 // +1 for header
 	}
-	
+
 	return nil
 }
 
@@ -98,7 +98,7 @@ func (jf *JobsFactory) UpdateDetailData(dataManager *core.DataManager, itemID st
 		jf.detailWidget.Rows = []string{"Select a job from the list to view details"}
 		return nil
 	}
-	
+
 	job, err := dataManager.GetJobDetails(itemID)
 	if err != nil {
 		jf.detailWidget.Rows = []string{
@@ -107,12 +107,12 @@ func (jf *JobsFactory) UpdateDetailData(dataManager *core.DataManager, itemID st
 		}
 		return err
 	}
-	
+
 	metrics, metricsErr := dataManager.GetJobMetrics(itemID)
 	mappings, mappingsErr := dataManager.GetJobMappings(itemID)
-	
+
 	var rows []string
-	
+
 	rows = append(rows, "=== JOB INFORMATION ===")
 	rows = append(rows, fmt.Sprintf("ID: %s", SafeString(job["id"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Name: %s", SafeString(job["name"], "N/A")))
@@ -121,10 +121,10 @@ func (jf *JobsFactory) UpdateDetailData(dataManager *core.DataManager, itemID st
 	rows = append(rows, fmt.Sprintf("Target Cluster: %s", SafeString(job["target_cluster_name"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Created: %s", SafeString(job["created_at"], "N/A")))
 	rows = append(rows, fmt.Sprintf("Updated: %s", SafeString(job["updated_at"], "N/A")))
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== CURRENT METRICS ===")
-	
+
 	if metricsErr != nil {
 		rows = append(rows, fmt.Sprintf("Metrics Error: %v", metricsErr))
 	} else if metrics != nil {
@@ -132,13 +132,13 @@ func (jf *JobsFactory) UpdateDetailData(dataManager *core.DataManager, itemID st
 		throughput := SafeFloat(metrics["messages_replicated"], 0)
 		totalProcessed := SafeFloat(metrics["total_messages_processed"], 0)
 		errorCount := SafeFloat(metrics["error_count"], 0)
-		
+
 		rows = append(rows, fmt.Sprintf("Current Lag: %.0f messages", currentLag))
 		rows = append(rows, fmt.Sprintf("Messages/sec: %.0f", throughput))
 		rows = append(rows, fmt.Sprintf("Total Processed: %.0f", totalProcessed))
 		rows = append(rows, fmt.Sprintf("Errors: %.0f", errorCount))
 		rows = append(rows, fmt.Sprintf("Last Updated: %s", SafeString(metrics["timestamp"], "N/A")))
-		
+
 		// Health assessment based on error count and lag thresholds
 		var healthStatus string
 		if errorCount > 0 {
@@ -152,10 +152,10 @@ func (jf *JobsFactory) UpdateDetailData(dataManager *core.DataManager, itemID st
 	} else {
 		rows = append(rows, "No metrics available")
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== TOPIC MAPPINGS ===")
-	
+
 	if mappingsErr != nil {
 		rows = append(rows, fmt.Sprintf("Mappings Error: %v", mappingsErr))
 	} else if len(mappings) == 0 {
@@ -171,7 +171,7 @@ func (jf *JobsFactory) UpdateDetailData(dataManager *core.DataManager, itemID st
 			}
 		}
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== REPLICATION SETTINGS ===")
 	if batchSize := job["batch_size"]; batchSize != nil {
@@ -186,7 +186,7 @@ func (jf *JobsFactory) UpdateDetailData(dataManager *core.DataManager, itemID st
 	if preservePartitions := job["preserve_partitions"]; preservePartitions != nil {
 		rows = append(rows, fmt.Sprintf("Preserve Partitions: %v", preservePartitions))
 	}
-	
+
 	rows = append(rows, "")
 	rows = append(rows, "=== CONTROLS ===")
 	rows = append(rows, "Press 'S' to start job")
@@ -195,10 +195,10 @@ func (jf *JobsFactory) UpdateDetailData(dataManager *core.DataManager, itemID st
 	rows = append(rows, "Press 'X' to restart job")
 	rows = append(rows, "Press 'R' to refresh data")
 	rows = append(rows, "Press 'B' or Escape to go back")
-	
+
 	jf.detailWidget.Rows = rows
 	jf.detailWidget.Title = fmt.Sprintf("Job Details: %s", SafeString(job["name"], itemID))
-	
+
 	return nil
 }
 
@@ -207,12 +207,12 @@ func (jf *JobsFactory) HandleAction(action core.EventAction, dataManager *core.D
 	if !ok {
 		return nil // Not a job control action
 	}
-	
+
 	jobID := jf.GetSelectedItemID()
 	if jobID == "" {
 		return fmt.Errorf("no job selected")
 	}
-	
+
 	// This would typically call job control functions
 	// For now, we'll simulate the action
 	switch jobAction.Action {
@@ -220,7 +220,7 @@ func (jf *JobsFactory) HandleAction(action core.EventAction, dataManager *core.D
 		// Call startJob(dataManager.token, jobID)
 		jf.listWidget.Title = fmt.Sprintf("Jobs (Starting job %s...)", jobID)
 	case "stop":
-		// Call stopJob(dataManager.token, jobID)  
+		// Call stopJob(dataManager.token, jobID)
 		jf.listWidget.Title = fmt.Sprintf("Jobs (Stopping job %s...)", jobID)
 	case "pause":
 		// Call pauseJob(dataManager.token, jobID)
@@ -229,12 +229,12 @@ func (jf *JobsFactory) HandleAction(action core.EventAction, dataManager *core.D
 		// Call restartJob(dataManager.token, jobID)
 		jf.listWidget.Title = fmt.Sprintf("Jobs (Restarting job %s...)", jobID)
 	}
-	
+
 	// Invalidate cache to force refresh of job data
 	dataManager.InvalidateCache("jobs")
 	dataManager.InvalidateCache("metrics_" + jobID)
 	dataManager.InvalidateCache("job_details_" + jobID)
-	
+
 	return nil
 }
 

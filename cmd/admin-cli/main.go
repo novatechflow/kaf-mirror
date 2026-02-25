@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
-	"github.com/AlecAivazis/survey/v2"
 )
 
 var db *sqlx.DB
@@ -52,6 +52,26 @@ func copyFile(src, dst string) error {
 	}
 
 	return destFile.Sync()
+}
+
+func writeSecretTempFile(prefix string, secret string) (string, error) {
+	file, err := os.CreateTemp("", prefix)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	if err := file.Chmod(0600); err != nil {
+		return "", err
+	}
+	if _, err := file.WriteString(secret + "\n"); err != nil {
+		return "", err
+	}
+	if err := file.Sync(); err != nil {
+		return "", err
+	}
+
+	return file.Name(), nil
 }
 
 func main() {
@@ -236,14 +256,19 @@ and for emergency maintenance. It interacts directly with the database.`,
 			if err := database.UpdateUserPassword(db, user.ID, password); err != nil {
 				log.Fatalf("Failed to reset password: %v", err)
 			}
+			secretFile, err := writeSecretTempFile("kaf-mirror-admin-reset-*", password)
+			if err != nil {
+				log.Fatalf("Failed to write password file: %v", err)
+			}
 
 			fmt.Println("=================================================================")
 			fmt.Println("  ADMIN PASSWORD RESET")
 			fmt.Println("=================================================================")
 			fmt.Printf("  Username: %s\n", user.Username)
-			fmt.Printf("  New Password: %s\n", password)
+			fmt.Println("  New Password: [REDACTED]")
+			fmt.Printf("  Password File: %s\n", secretFile)
 			fmt.Println("=================================================================")
-			fmt.Println("  Please store this password in a secure location.")
+			fmt.Println("  Deliver the password securely, then delete the file.")
 			fmt.Println("=================================================================")
 		},
 	}
@@ -276,6 +301,10 @@ and for emergency maintenance. It interacts directly with the database.`,
 			if err != nil {
 				log.Fatalf("Failed to create admin user: %v", err)
 			}
+			secretFile, err := writeSecretTempFile("kaf-mirror-bootstrap-*", password)
+			if err != nil {
+				log.Fatalf("Failed to write password file: %v", err)
+			}
 
 			var adminRoleID int
 			if err := db.Get(&adminRoleID, "SELECT id FROM roles WHERE name = 'admin'"); err != nil {
@@ -289,9 +318,10 @@ and for emergency maintenance. It interacts directly with the database.`,
 			fmt.Println("  INITIAL ADMIN USER CREATED")
 			fmt.Println("=================================================================")
 			fmt.Printf("  Username: %s\n", user.Username)
-			fmt.Printf("  Password: %s\n", password)
+			fmt.Println("  Password: [REDACTED]")
+			fmt.Printf("  Password File: %s\n", secretFile)
 			fmt.Println("=================================================================")
-			fmt.Println("  Please store this password in a secure location.")
+			fmt.Println("  Deliver the password securely, then delete the file.")
 			fmt.Println("=================================================================")
 		},
 	}
@@ -309,7 +339,7 @@ and for emergency maintenance. It interacts directly with the database.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			outputPath := args[0]
 			timestamp := time.Now().Format("20060102-150405")
-			
+
 			if !strings.HasSuffix(outputPath, ".db") {
 				outputPath = fmt.Sprintf("%s-backup-%s.db", strings.TrimSuffix(outputPath, filepath.Ext(outputPath)), timestamp)
 			}
@@ -317,7 +347,7 @@ and for emergency maintenance. It interacts directly with the database.`,
 			if err := copyFile(dbPath, outputPath); err != nil {
 				log.Fatalf("Failed to backup database: %v", err)
 			}
-			
+
 			fmt.Printf("Database backup created: %s\n", outputPath)
 		},
 	}
@@ -330,11 +360,11 @@ and for emergency maintenance. It interacts directly with the database.`,
 			configPath, _ := cmd.Flags().GetString("config-path")
 			outputPath := args[0]
 			timestamp := time.Now().Format("20060102-150405")
-			
+
 			if _, err := os.Stat(configPath); os.IsNotExist(err) {
 				log.Fatalf("Configuration file not found: %s", configPath)
 			}
-			
+
 			if !strings.HasSuffix(outputPath, ".yml") {
 				outputPath = fmt.Sprintf("%s-config-backup-%s.yml", strings.TrimSuffix(outputPath, filepath.Ext(outputPath)), timestamp)
 			}
@@ -342,7 +372,7 @@ and for emergency maintenance. It interacts directly with the database.`,
 			if err := copyFile(configPath, outputPath); err != nil {
 				log.Fatalf("Failed to backup configuration: %v", err)
 			}
-			
+
 			fmt.Printf("Configuration backup created: %s\n", outputPath)
 		},
 	}
@@ -357,17 +387,17 @@ and for emergency maintenance. It interacts directly with the database.`,
 			configPath, _ := cmd.Flags().GetString("config-path")
 			timestamp := time.Now().Format("20060102-150405")
 			backupDir := filepath.Join(outputDir, fmt.Sprintf("kaf-mirror-backup-%s", timestamp))
-			
+
 			if err := os.MkdirAll(backupDir, 0755); err != nil {
 				log.Fatalf("Failed to create backup directory: %v", err)
 			}
-			
+
 			dbBackupPath := filepath.Join(backupDir, "database.db")
 			if err := copyFile(dbPath, dbBackupPath); err != nil {
 				log.Fatalf("Failed to backup database: %v", err)
 			}
 			fmt.Printf("Database backed up to: %s\n", dbBackupPath)
-			
+
 			if _, err := os.Stat(configPath); err == nil {
 				configBackupPath := filepath.Join(backupDir, "config.yml")
 				if err := copyFile(configPath, configBackupPath); err != nil {
@@ -375,7 +405,7 @@ and for emergency maintenance. It interacts directly with the database.`,
 				}
 				fmt.Printf("Configuration backed up to: %s\n", configBackupPath)
 			}
-			
+
 			fmt.Printf("Full backup created in: %s\n", backupDir)
 		},
 	}
@@ -393,11 +423,11 @@ and for emergency maintenance. It interacts directly with the database.`,
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			backupPath := args[0]
-			
+
 			if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 				log.Fatalf("Backup file not found: %s", backupPath)
 			}
-			
+
 			confirm := false
 			prompt := &survey.Confirm{
 				Message: "This will overwrite the current database. Are you sure?",
@@ -407,11 +437,11 @@ and for emergency maintenance. It interacts directly with the database.`,
 				fmt.Println("Restore cancelled.")
 				return
 			}
-			
+
 			if err := copyFile(backupPath, dbPath); err != nil {
 				log.Fatalf("Failed to restore database: %v", err)
 			}
-			
+
 			fmt.Printf("Database restored from: %s\n", backupPath)
 		},
 	}
@@ -423,11 +453,11 @@ and for emergency maintenance. It interacts directly with the database.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			backupPath := args[0]
 			configPath, _ := cmd.Flags().GetString("config-path")
-			
+
 			if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 				log.Fatalf("Backup file not found: %s", backupPath)
 			}
-			
+
 			confirm := false
 			prompt := &survey.Confirm{
 				Message: "This will overwrite the current configuration. Are you sure?",
@@ -437,11 +467,11 @@ and for emergency maintenance. It interacts directly with the database.`,
 				fmt.Println("Restore cancelled.")
 				return
 			}
-			
+
 			if err := copyFile(backupPath, configPath); err != nil {
 				log.Fatalf("Failed to restore configuration: %v", err)
 			}
-			
+
 			fmt.Printf("Configuration restored from: %s\n", backupPath)
 		},
 	}
@@ -460,11 +490,11 @@ and for emergency maintenance. It interacts directly with the database.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			sourcePath := args[0]
 			merge, _ := cmd.Flags().GetBool("merge")
-			
+
 			if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
 				log.Fatalf("Source database not found: %s", sourcePath)
 			}
-			
+
 			if !merge {
 				confirm := false
 				prompt := &survey.Confirm{
@@ -475,7 +505,7 @@ and for emergency maintenance. It interacts directly with the database.`,
 					fmt.Println("Import cancelled.")
 					return
 				}
-				
+
 				if err := copyFile(sourcePath, dbPath); err != nil {
 					log.Fatalf("Failed to import database: %v", err)
 				}
@@ -494,11 +524,11 @@ and for emergency maintenance. It interacts directly with the database.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			sourcePath := args[0]
 			configPath, _ := cmd.Flags().GetString("config-path")
-			
+
 			if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
 				log.Fatalf("Source configuration not found: %s", sourcePath)
 			}
-			
+
 			confirm := false
 			prompt := &survey.Confirm{
 				Message: "This will overwrite the current configuration. Are you sure?",
@@ -508,11 +538,11 @@ and for emergency maintenance. It interacts directly with the database.`,
 				fmt.Println("Import cancelled.")
 				return
 			}
-			
+
 			if err := copyFile(sourcePath, configPath); err != nil {
 				log.Fatalf("Failed to import configuration: %v", err)
 			}
-			
+
 			fmt.Printf("Configuration imported from: %s\n", sourcePath)
 		},
 	}
@@ -525,14 +555,14 @@ and for emergency maintenance. It interacts directly with the database.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			sourceDir := args[0]
 			configPath, _ := cmd.Flags().GetString("config-path")
-			
+
 			dbSourcePath := filepath.Join(sourceDir, "database.db")
 			configSourcePath := filepath.Join(sourceDir, "config.yml")
-			
+
 			if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
 				log.Fatalf("Source directory not found: %s", sourceDir)
 			}
-			
+
 			confirm := false
 			prompt := &survey.Confirm{
 				Message: "This will overwrite database and configuration. Are you sure?",
@@ -542,7 +572,7 @@ and for emergency maintenance. It interacts directly with the database.`,
 				fmt.Println("Import cancelled.")
 				return
 			}
-			
+
 			if _, err := os.Stat(dbSourcePath); err == nil {
 				if err := copyFile(dbSourcePath, dbPath); err != nil {
 					log.Fatalf("Failed to import database: %v", err)
@@ -551,7 +581,7 @@ and for emergency maintenance. It interacts directly with the database.`,
 			} else {
 				fmt.Println("No database found in source directory, skipping.")
 			}
-			
+
 			if _, err := os.Stat(configSourcePath); err == nil {
 				if err := copyFile(configSourcePath, configPath); err != nil {
 					log.Fatalf("Failed to import configuration: %v", err)
@@ -560,7 +590,7 @@ and for emergency maintenance. It interacts directly with the database.`,
 			} else {
 				fmt.Println("No configuration found in source directory, skipping.")
 			}
-			
+
 			fmt.Printf("Full import completed from: %s\n", sourceDir)
 		},
 	}

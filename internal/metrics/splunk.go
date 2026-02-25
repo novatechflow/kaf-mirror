@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package metrics
 
 import (
@@ -38,10 +37,10 @@ func NewSplunkSink(cfg config.SplunkConfig) (*SplunkSink, error) {
 // Send sends a metric to Splunk.
 func (s *SplunkSink) Send(metric database.ReplicationMetric) error {
 	payload := map[string]interface{}{
-		"event":       metric,
-		"source":      "kaf-mirror",
-		"sourcetype":  "_json",
-		"index":       s.cfg.Index,
+		"event":      metric,
+		"source":     "kaf-mirror",
+		"sourcetype": "_json",
+		"index":      s.cfg.Index,
 	}
 
 	body, err := json.Marshal(payload)

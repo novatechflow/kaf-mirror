@@ -20,11 +20,11 @@ import (
 
 // MockKgoClient is a mock implementation of the KgoClient interface.
 type MockKgoClient struct {
-	RequestFunc     func(context.Context, kmsg.Request) (kmsg.Response, error)
-	PollFetchesFunc func(context.Context) kgo.Fetches
-	ProduceFunc     func(context.Context, *kgo.Record, func(*kgo.Record, error))
+	RequestFunc          func(context.Context, kmsg.Request) (kmsg.Response, error)
+	PollFetchesFunc      func(context.Context) kgo.Fetches
+	ProduceFunc          func(context.Context, *kgo.Record, func(*kgo.Record, error))
 	AddConsumeTopicsFunc func(...string)
-	CloseFunc       func()
+	CloseFunc            func()
 }
 
 func (m *MockKgoClient) Request(ctx context.Context, req kmsg.Request) (kmsg.Response, error) {

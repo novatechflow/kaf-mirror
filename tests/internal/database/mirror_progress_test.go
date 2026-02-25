@@ -31,18 +31,18 @@ func TestMirrorProgress(t *testing.T) {
 
 	t.Run("UpdateMirrorProgress", func(t *testing.T) {
 		progress := database.MirrorProgress{
-			JobID:                 jobID,
-			SourceTopic:           "test-topic",
-			TargetTopic:           "test-topic-target",
-			PartitionID:           0,
-			SourceOffset:          1000,
-			TargetOffset:          950,
-			SourceHighWaterMark:   1000,
-			TargetHighWaterMark:   950,
-			LastReplicatedOffset:  950,
-			ReplicationLag:        50,
-			LastUpdated:           time.Now(),
-			Status:                "active",
+			JobID:                jobID,
+			SourceTopic:          "test-topic",
+			TargetTopic:          "test-topic-target",
+			PartitionID:          0,
+			SourceOffset:         1000,
+			TargetOffset:         950,
+			SourceHighWaterMark:  1000,
+			TargetHighWaterMark:  950,
+			LastReplicatedOffset: 950,
+			ReplicationLag:       50,
+			LastUpdated:          time.Now(),
+			Status:               "active",
 		}
 
 		err := database.UpdateMirrorProgress(db, progress)
@@ -64,7 +64,7 @@ func TestMirrorProgress(t *testing.T) {
 		progressList, err := database.GetMirrorProgress(db, jobID)
 		assert.NoError(t, err)
 		assert.Len(t, progressList, 1)
-		
+
 		progress := progressList[0]
 		assert.Equal(t, jobID, progress.JobID)
 		assert.Equal(t, "test-topic", progress.SourceTopic)
@@ -195,16 +195,16 @@ func TestMirrorStateAnalysis(t *testing.T) {
 
 	t.Run("StoreMirrorStateAnalysis", func(t *testing.T) {
 		analysis := database.MirrorStateAnalysis{
-			JobID:                jobID,
-			AnalysisType:         "gap_detection",
-			SourceClusterState:   `{"brokers": 3, "topics": 2}`,
-			TargetClusterState:   `{"brokers": 3, "topics": 2}`,
-			AnalysisResults:      `{"gaps": 1, "lag": 150}`,
-			Recommendations:      `["Wait for replication to catch up"]`,
-			CriticalIssuesCount:  1,
-			WarningIssuesCount:   0,
-			AnalyzedAt:           time.Now(),
-			AnalyzerVersion:      "1.0",
+			JobID:               jobID,
+			AnalysisType:        "gap_detection",
+			SourceClusterState:  `{"brokers": 3, "topics": 2}`,
+			TargetClusterState:  `{"brokers": 3, "topics": 2}`,
+			AnalysisResults:     `{"gaps": 1, "lag": 150}`,
+			Recommendations:     `["Wait for replication to catch up"]`,
+			CriticalIssuesCount: 1,
+			WarningIssuesCount:  0,
+			AnalyzedAt:          time.Now(),
+			AnalyzerVersion:     "1.0",
 		}
 
 		id, err := database.StoreMirrorStateAnalysis(db, analysis)
@@ -215,16 +215,16 @@ func TestMirrorStateAnalysis(t *testing.T) {
 	t.Run("GetMirrorStateAnalysis", func(t *testing.T) {
 		// Insert another analysis
 		analysis2 := database.MirrorStateAnalysis{
-			JobID:                jobID,
-			AnalysisType:         "resume_validation",
-			SourceClusterState:   `{"brokers": 3, "topics": 2}`,
-			TargetClusterState:   `{"brokers": 3, "topics": 2}`,
-			AnalysisResults:      `{"gaps": 0, "lag": 0}`,
-			Recommendations:      `["Migration is safe to proceed"]`,
-			CriticalIssuesCount:  0,
-			WarningIssuesCount:   0,
-			AnalyzedAt:           time.Now(),
-			AnalyzerVersion:      "1.0",
+			JobID:               jobID,
+			AnalysisType:        "resume_validation",
+			SourceClusterState:  `{"brokers": 3, "topics": 2}`,
+			TargetClusterState:  `{"brokers": 3, "topics": 2}`,
+			AnalysisResults:     `{"gaps": 0, "lag": 0}`,
+			Recommendations:     `["Migration is safe to proceed"]`,
+			CriticalIssuesCount: 0,
+			WarningIssuesCount:  0,
+			AnalyzedAt:          time.Now(),
+			AnalyzerVersion:     "1.0",
 		}
 		time.Sleep(1 * time.Millisecond) // Ensure different timestamp
 		_, err := database.StoreMirrorStateAnalysis(db, analysis2)
@@ -233,7 +233,7 @@ func TestMirrorStateAnalysis(t *testing.T) {
 		analyses, err := database.GetMirrorStateAnalysis(db, jobID)
 		assert.NoError(t, err)
 		assert.Len(t, analyses, 2)
-		
+
 		// Most recent should be first (ordered by analyzed_at DESC)
 		latest := analyses[0]
 		assert.Equal(t, jobID, latest.JobID)
@@ -250,7 +250,7 @@ func TestMirrorStateSchemaValidation(t *testing.T) {
 	t.Run("VerifyMirrorStateTables", func(t *testing.T) {
 		expectedTables := []string{
 			"mirror_progress",
-			"resume_points", 
+			"resume_points",
 			"migration_checkpoints",
 			"mirror_state_analysis",
 			"mirror_gaps",
@@ -269,13 +269,13 @@ func TestMirrorStateSchemaValidation(t *testing.T) {
 
 	t.Run("TestJSONSerialization", func(t *testing.T) {
 		jobID := uuid.NewString()
-		
+
 		// Test complex nested JSON serialization in checkpoints
 		consumerOffsets := map[string]int64{
-			"test-topic": 1000,
+			"test-topic":    1000,
 			"another-topic": 2500,
 		}
-		
+
 		waterMarks := map[string]map[int]int64{
 			"test-topic": {
 				0: 1000,
@@ -317,12 +317,12 @@ func TestMirrorStateSchemaValidation(t *testing.T) {
 		err = json.Unmarshal([]byte(retrieved.SourceConsumerGroupOffsets), &parsedOffsets)
 		assert.NoError(t, err)
 		assert.Equal(t, int64(1000), parsedOffsets["test-topic"])
-		
+
 		var parsedWaterMarks map[string]map[int]int64
 		err = json.Unmarshal([]byte(retrieved.TargetHighWaterMarks), &parsedWaterMarks)
 		assert.NoError(t, err)
 		assert.Equal(t, int64(1000), parsedWaterMarks["test-topic"][0])
-		
+
 		// Verify validation results
 		assert.NotNil(t, retrieved.ValidationResults)
 		var validationData map[string]interface{}

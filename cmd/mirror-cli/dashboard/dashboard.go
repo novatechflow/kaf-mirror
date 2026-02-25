@@ -26,15 +26,15 @@ type Dashboard struct {
 	context     *core.NavigationContext
 	router      *core.EventRouter
 	dataManager *core.DataManager
-	
+
 	jobsFactory       *widgets.JobsFactory
 	clustersFactory   *widgets.ClustersFactory
 	insightsFactory   *widgets.InsightsFactory
 	complianceFactory *widgets.ComplianceFactory
-	
-	categoryLayout *layouts.CategoryLayout
-	topLevelGrid *ui.Grid
-	updateTicker *time.Ticker
+
+	categoryLayout  *layouts.CategoryLayout
+	topLevelGrid    *ui.Grid
+	updateTicker    *time.Ticker
 	focusedCategory core.Category
 }
 
@@ -42,12 +42,12 @@ func NewDashboard(token string, fetchers core.DataFetchers) *Dashboard {
 	context := core.NewNavigationContext()
 	router := core.NewEventRouter(context)
 	dataManager := core.NewDataManager(token, fetchers)
-	
+
 	jobsFactory := widgets.NewJobsFactory()
 	clustersFactory := widgets.NewClustersFactory()
 	insightsFactory := widgets.NewInsightsFactory()
 	complianceFactory := widgets.NewComplianceFactory()
-	
+
 	dashboard := &Dashboard{
 		context:           context,
 		router:            router,
@@ -58,7 +58,7 @@ func NewDashboard(token string, fetchers core.DataFetchers) *Dashboard {
 		complianceFactory: complianceFactory,
 		focusedCategory:   core.ClustersCategory, // Default focus on first category
 	}
-	
+
 	return dashboard
 }
 
@@ -71,31 +71,31 @@ func (d *Dashboard) updateTopLevelFocus() {
 	if d.topLevelGrid == nil {
 		return
 	}
-	
+
 	clustersWidget := termui.NewParagraph()
 	clustersWidget.Title = "1. Clusters"
 	clustersWidget.Text = d.getClustersOverview()
 	clustersWidget.BorderStyle = ui.NewStyle(ui.ColorCyan)
 	clustersWidget.WrapText = true
-	
+
 	jobsWidget := termui.NewParagraph()
 	jobsWidget.Title = "2. Jobs"
 	jobsWidget.Text = d.getJobsOverview()
 	jobsWidget.BorderStyle = ui.NewStyle(ui.ColorGreen)
 	jobsWidget.WrapText = true
-	
+
 	insightsWidget := termui.NewParagraph()
 	insightsWidget.Title = "3. Insights"
 	insightsWidget.Text = d.getInsightsOverview()
 	insightsWidget.BorderStyle = ui.NewStyle(ui.ColorMagenta)
 	insightsWidget.WrapText = true
-	
+
 	complianceWidget := termui.NewParagraph()
 	complianceWidget.Title = "4. Compliance"
 	complianceWidget.Text = d.getComplianceOverview()
 	complianceWidget.BorderStyle = ui.NewStyle(ui.ColorYellow)
 	complianceWidget.WrapText = true
-	
+
 	// Apply focus styling - make focused widget brighter/bold
 	switch d.focusedCategory {
 	case core.ClustersCategory:
@@ -111,7 +111,7 @@ func (d *Dashboard) updateTopLevelFocus() {
 		complianceWidget.BorderStyle = ui.NewStyle(ui.ColorWhite)
 		complianceWidget.Title = ">>> 4. Compliance <<<"
 	}
-	
+
 	termWidth, termHeight := ui.TerminalDimensions()
 	d.topLevelGrid.SetRect(0, 0, termWidth, termHeight)
 	d.topLevelGrid.Set(
@@ -131,18 +131,18 @@ func (d *Dashboard) Run() error {
 		return err
 	}
 	defer ui.Close()
-	
+
 	// Set up layout after UI is initialized
 	d.setupTopLevelLayout()
-	
+
 	d.render()
-	
+
 	// Set up update ticker for live data
 	d.updateTicker = time.NewTicker(2 * time.Second)
 	defer d.updateTicker.Stop()
-	
+
 	uiEvents := ui.PollEvents()
-	
+
 	for {
 		select {
 		case e := <-uiEvents:
@@ -150,7 +150,7 @@ func (d *Dashboard) Run() error {
 				return nil // Exit requested
 			}
 			d.render()
-			
+
 		case <-d.updateTicker.C:
 			d.updateData()
 			d.render()
@@ -160,11 +160,11 @@ func (d *Dashboard) Run() error {
 
 func (d *Dashboard) handleEvent(event ui.Event) bool {
 	action := d.router.RouteEvent(event)
-	
+
 	switch a := action.(type) {
 	case core.ExitAction:
 		return true
-		
+
 	case core.BackAction:
 		if d.context.IsAtTopLevel() {
 			// Exit dashboard when at top level
@@ -173,36 +173,36 @@ func (d *Dashboard) handleEvent(event ui.Event) bool {
 			d.context.NavigateBack()
 			d.setupCurrentView()
 		}
-		
+
 	case core.NavigateToCategoryAction:
 		d.context.NavigateToCategory(a.Category)
 		d.setupCurrentView()
-		
+
 	case core.ScrollAction:
 		d.handleScroll(a.Direction)
-		
+
 	case core.SelectItemAction:
 		d.handleSelection()
-		
+
 	case core.RefreshAction:
 		d.dataManager.InvalidateAllCache()
 		d.updateData()
-		
+
 	case core.JobControlAction:
 		if d.context.Category == core.JobsCategory {
 			d.jobsFactory.HandleAction(action, d.dataManager)
 		}
-		
+
 	case core.MoveFocusAction:
 		d.handleMoveFocus(a.Direction)
-		
+
 	case core.SwitchPaneFocusAction:
 		d.handleSwitchPaneFocus(a.Direction)
-		
+
 	case core.NoAction:
 		// Do nothing
 	}
-	
+
 	return false
 }
 
@@ -222,7 +222,7 @@ func (d *Dashboard) handleMoveFocus(direction core.Direction) {
 	if !d.context.IsAtTopLevel() {
 		return
 	}
-	
+
 	// Navigate between categories based on grid layout
 	switch direction {
 	case core.Up:
@@ -250,7 +250,7 @@ func (d *Dashboard) handleMoveFocus(direction core.Direction) {
 			d.focusedCategory = core.ComplianceCategory
 		}
 	}
-	
+
 	d.updateTopLevelFocus()
 }
 
@@ -258,7 +258,7 @@ func (d *Dashboard) handleSwitchPaneFocus(direction core.Direction) {
 	if !d.context.IsInCategory() {
 		return
 	}
-	
+
 	switch direction {
 	case core.Right:
 		if d.context.PaneFocus == core.ListPaneFocus {
@@ -269,7 +269,7 @@ func (d *Dashboard) handleSwitchPaneFocus(direction core.Direction) {
 			d.context.PaneFocus = core.ListPaneFocus
 		}
 	}
-	
+
 	// Update visual focus in category layout
 	if d.categoryLayout != nil {
 		d.categoryLayout.UpdatePaneFocus(d.context.PaneFocus)
@@ -290,11 +290,11 @@ func (d *Dashboard) handleSelection() {
 
 func (d *Dashboard) setupCurrentView() {
 	termWidth, termHeight := ui.TerminalDimensions()
-	
+
 	switch d.context.State {
 	case core.TopLevelState:
 		// Already set up in setupTopLevelLayout
-		
+
 	case core.CategoryViewState:
 		factory := d.getCurrentFactory()
 		if factory != nil {
@@ -303,19 +303,19 @@ func (d *Dashboard) setupCurrentView() {
 			// Apply initial pane focus styling
 			d.categoryLayout.UpdatePaneFocus(d.context.PaneFocus)
 		}
-		
+
 	case core.DetailViewState:
 		factory := d.getCurrentFactory()
 		if factory != nil {
 			// Update detail data first
 			factory.UpdateDetailData(d.dataManager, d.context.ItemID)
-			
+
 			// Set up full-screen detail view
 			detailWidget := factory.CreateDetailWidget(d.context.ItemID)
 			d.topLevelGrid = ui.NewGrid()
 			d.topLevelGrid.SetRect(0, 0, termWidth, termHeight)
 			d.topLevelGrid.Set(ui.NewRow(1.0, ui.NewCol(1.0, detailWidget)))
-			
+
 			// Clear category layout as we're using topLevelGrid for detail
 			d.categoryLayout = nil
 		}
@@ -352,12 +352,12 @@ func (d *Dashboard) render() {
 	switch d.context.State {
 	case core.TopLevelState:
 		ui.Render(d.topLevelGrid)
-		
+
 	case core.CategoryViewState:
 		if d.categoryLayout != nil {
 			ui.Render(d.categoryLayout.GetGrid())
 		}
-		
+
 	case core.DetailViewState:
 		// Use topLevelGrid for detail view (set up in setupCurrentView)
 		ui.Render(d.topLevelGrid)
@@ -374,11 +374,11 @@ func (d *Dashboard) getClustersOverview() string {
 	if err != nil {
 		return "Error loading clusters"
 	}
-	
+
 	if len(clusters) == 0 {
 		return "No clusters configured"
 	}
-	
+
 	text := ""
 	for i, cluster := range clusters {
 		if i >= 3 { // Show max 3 clusters
@@ -389,11 +389,11 @@ func (d *Dashboard) getClustersOverview() string {
 		status := widgets.SafeString(cluster["status"], "unknown")
 		text += fmt.Sprintf("• %s (%s)\n", widgets.TruncateString(name, 20), status)
 	}
-	
+
 	if len(clusters) > 3 {
 		text += fmt.Sprintf("Total: %d clusters", len(clusters))
 	}
-	
+
 	return text
 }
 
@@ -402,11 +402,11 @@ func (d *Dashboard) getJobsOverview() string {
 	if err != nil {
 		return "Error loading jobs"
 	}
-	
+
 	if len(jobs) == 0 {
 		return "No replication jobs"
 	}
-	
+
 	text := ""
 	for i, job := range jobs {
 		if i >= 3 { // Show max 3 jobs
@@ -417,11 +417,11 @@ func (d *Dashboard) getJobsOverview() string {
 		status := widgets.SafeString(job["status"], "unknown")
 		text += fmt.Sprintf("• %s (%s)\n", widgets.TruncateString(name, 20), status)
 	}
-	
+
 	if len(jobs) > 3 {
 		text += fmt.Sprintf("Total: %d jobs", len(jobs))
 	}
-	
+
 	return text
 }
 
@@ -430,11 +430,11 @@ func (d *Dashboard) getInsightsOverview() string {
 	if err != nil {
 		return "Error loading insights"
 	}
-	
+
 	if len(insights) == 0 {
 		return "No AI insights available"
 	}
-	
+
 	text := ""
 	for i, insight := range insights {
 		if i >= 5 { // Show max 5 insights
@@ -445,11 +445,11 @@ func (d *Dashboard) getInsightsOverview() string {
 		severity := widgets.SafeString(insight["severity_level"], "normal")
 		text += fmt.Sprintf("• %s (%s)\n", widgets.TruncateString(insightType, 20), severity)
 	}
-	
+
 	if len(insights) > 5 {
 		text += fmt.Sprintf("Total: %d insights", len(insights))
 	}
-	
+
 	return text
 }
 
@@ -458,11 +458,11 @@ func (d *Dashboard) getComplianceOverview() string {
 	if err != nil {
 		return "Error loading compliance logs"
 	}
-	
+
 	if len(logs) == 0 {
 		return "No compliance events"
 	}
-	
+
 	text := ""
 	for i, log := range logs {
 		if i >= 3 { // Show max 3 compliance entries
@@ -473,11 +473,11 @@ func (d *Dashboard) getComplianceOverview() string {
 		user := widgets.SafeString(log["user"], "System")
 		text += fmt.Sprintf("• %s by %s\n", widgets.TruncateString(action, 15), widgets.TruncateString(user, 12))
 	}
-	
+
 	if len(logs) > 3 {
 		text += fmt.Sprintf("Total: %d events", len(logs))
 	}
-	
+
 	return text
 }
 

@@ -14,7 +14,7 @@ package layouts
 import (
 	"kaf-mirror/cmd/mirror-cli/dashboard/core"
 	"kaf-mirror/cmd/mirror-cli/dashboard/widgets"
-	
+
 	ui "github.com/gizak/termui/v3"
 	ui_widgets "github.com/gizak/termui/v3/widgets"
 )
@@ -27,7 +27,7 @@ type CategoryLayout struct {
 
 func NewCategoryLayout(factory widgets.WidgetFactory, context *core.NavigationContext) *CategoryLayout {
 	grid := ui.NewGrid()
-	
+
 	return &CategoryLayout{
 		grid:    grid,
 		factory: factory,
@@ -37,14 +37,14 @@ func NewCategoryLayout(factory widgets.WidgetFactory, context *core.NavigationCo
 
 func (cl *CategoryLayout) Setup(termWidth, termHeight int) {
 	cl.grid.SetRect(0, 0, termWidth, termHeight)
-	
+
 	if cl.factory == nil {
 		return
 	}
-	
+
 	listWidget := cl.factory.CreateListWidget()
 	detailWidget := cl.factory.CreateDetailWidget("")
-	
+
 	cl.grid.Set(
 		ui.NewRow(1.0,
 			ui.NewCol(0.4, listWidget),
@@ -61,18 +61,18 @@ func (cl *CategoryLayout) UpdateData(dataManager *core.DataManager) error {
 	if cl.factory == nil {
 		return nil
 	}
-	
+
 	if err := cl.factory.UpdateListData(dataManager); err != nil {
 		return err
 	}
-	
+
 	if cl.context.ItemID != "" {
 		if err := cl.factory.UpdateDetailData(dataManager, cl.context.ItemID); err != nil {
 			return err
 		}
 		cl.factory.ResetDetailCursor()
 	}
-	
+
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (cl *CategoryLayout) HandleScroll(direction core.Direction) {
 	if cl.factory == nil {
 		return
 	}
-	
+
 	switch cl.context.PaneFocus {
 	case core.ListPaneFocus:
 		cl.factory.ScrollList(direction)
@@ -93,12 +93,12 @@ func (cl *CategoryLayout) UpdatePaneFocus(focus core.PaneFocus) {
 	if cl.factory == nil {
 		return
 	}
-	
+
 	listWidget := cl.factory.CreateListWidget()
 	detailWidget := cl.factory.CreateDetailWidget("")
-	
+
 	cl.factory.SetDetailCursorVisible(focus == core.DetailPaneFocus)
-	
+
 	switch focus {
 	case core.ListPaneFocus:
 		if lw, ok := listWidget.(*ui_widgets.List); ok {
@@ -121,9 +121,9 @@ func (cl *CategoryLayout) HandleSelection() {
 	if cl.factory == nil {
 		return
 	}
-	
+
 	selectedID := cl.factory.GetSelectedItemID()
-	
+
 	if selectedID != "" {
 		cl.context.ItemID = selectedID
 	}

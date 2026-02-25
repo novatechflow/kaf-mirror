@@ -30,7 +30,7 @@ type DataManager struct {
 	cache      map[string]*CacheEntry
 	cacheMutex sync.RWMutex
 	token      string
-	
+
 	fetchJobs        func() ([]map[string]interface{}, error)
 	fetchClusters    func() ([]map[string]interface{}, error)
 	fetchMetrics     func(jobID string) (map[string]interface{}, error)
@@ -214,13 +214,13 @@ func (dm *DataManager) InvalidateAllCache() {
 func (dm *DataManager) GetCacheStats() map[string]int {
 	dm.cacheMutex.RLock()
 	defer dm.cacheMutex.RUnlock()
-	
+
 	stats := map[string]int{
 		"total_entries": len(dm.cache),
 		"expired":       0,
 		"valid":         0,
 	}
-	
+
 	for _, entry := range dm.cache {
 		if entry.IsExpired() {
 			stats["expired"]++
@@ -228,14 +228,14 @@ func (dm *DataManager) GetCacheStats() map[string]int {
 			stats["valid"]++
 		}
 	}
-	
+
 	return stats
 }
 
 func (dm *DataManager) CleanExpiredEntries() {
 	dm.cacheMutex.Lock()
 	defer dm.cacheMutex.Unlock()
-	
+
 	for key, entry := range dm.cache {
 		if entry.IsExpired() {
 			delete(dm.cache, key)

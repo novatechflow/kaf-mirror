@@ -39,13 +39,13 @@ func NewMockServer() *MockServer {
 	ms := &MockServer{
 		calls: make([]APICall, 0),
 	}
-	
+
 	mux := http.NewServeMux()
-	
+
 	mux.HandleFunc("/api/v1/clusters/test", ms.handleClusterTest)
 	mux.HandleFunc("/api/v1/clusters", ms.handleClusters)
 	mux.HandleFunc("/api/v1/clusters/", ms.handleClusterOperations)
-	
+
 	ms.server = httptest.NewServer(mux)
 	return ms
 }
@@ -81,14 +81,14 @@ func (ms *MockServer) handleClusterTest(w http.ResponseWriter, r *http.Request) 
 	for k, v := range r.Header {
 		headers[k] = strings.Join(v, ",")
 	}
-	
+
 	body := ""
 	if r.Body != nil {
 		buf := make([]byte, r.ContentLength)
 		r.Body.Read(buf)
 		body = string(buf)
 	}
-	
+
 	var testConfig map[string]interface{}
 	if err := json.Unmarshal([]byte(body), &testConfig); err != nil {
 		ms.recordCall(r.Method, r.URL.Path, headers, body, 400)
@@ -96,7 +96,7 @@ func (ms *MockServer) handleClusterTest(w http.ResponseWriter, r *http.Request) 
 		w.Write([]byte(`{"error":"Invalid JSON"}`))
 		return
 	}
-	
+
 	provider, ok := testConfig["provider"].(string)
 	if !ok {
 		ms.recordCall(r.Method, r.URL.Path, headers, body, 400)
@@ -104,7 +104,7 @@ func (ms *MockServer) handleClusterTest(w http.ResponseWriter, r *http.Request) 
 		w.Write([]byte(`{"error":"Missing provider"}`))
 		return
 	}
-	
+
 	switch provider {
 	case "confluent":
 		security, ok := testConfig["security"].(map[string]interface{})
@@ -128,7 +128,7 @@ func (ms *MockServer) handleClusterTest(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	
+
 	ms.recordCall(r.Method, r.URL.Path, headers, body, 200)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"connection successful"}`))
@@ -139,14 +139,14 @@ func (ms *MockServer) handleClusters(w http.ResponseWriter, r *http.Request) {
 	for k, v := range r.Header {
 		headers[k] = strings.Join(v, ",")
 	}
-	
+
 	body := ""
 	if r.Body != nil {
 		buf := make([]byte, r.ContentLength)
 		r.Body.Read(buf)
 		body = string(buf)
 	}
-	
+
 	if r.Method == "POST" {
 		var cluster map[string]interface{}
 		if err := json.Unmarshal([]byte(body), &cluster); err != nil {
@@ -154,7 +154,7 @@ func (ms *MockServer) handleClusters(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		
+
 		required := []string{"name", "provider", "brokers"}
 		for _, field := range required {
 			if cluster[field] == nil || cluster[field] == "" {
@@ -164,7 +164,7 @@ func (ms *MockServer) handleClusters(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		
+
 		ms.recordCall(r.Method, r.URL.Path, headers, body, 201)
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte(`{"message":"cluster created successfully"}`))
@@ -179,38 +179,38 @@ func (ms *MockServer) handleClusterOperations(w http.ResponseWriter, r *http.Req
 	for k, v := range r.Header {
 		headers[k] = strings.Join(v, ",")
 	}
-	
+
 	body := ""
 	if r.Body != nil {
 		buf := make([]byte, r.ContentLength)
 		r.Body.Read(buf)
 		body = string(buf)
 	}
-	
+
 	pathParts := strings.Split(r.URL.Path, "/")
 	if len(pathParts) < 4 {
 		ms.recordCall(r.Method, r.URL.Path, headers, body, 400)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	
+
 	clusterName := pathParts[4]
-	
+
 	switch r.Method {
 	case "GET":
 		mockCluster := map[string]interface{}{
-			"name":     clusterName,
-			"provider": "confluent",
-			"brokers":  "pkc-example.us-west1.example.cloud:9092",
+			"name":       clusterName,
+			"provider":   "confluent",
+			"brokers":    "pkc-example.us-west1.example.cloud:9092",
 			"cluster_id": "lkc-example",
-			"api_key":   "EXAMPLE_KEY",
-			"status":    "active",
+			"api_key":    "EXAMPLE_KEY",
+			"status":     "active",
 		}
-		
+
 		ms.recordCall(r.Method, r.URL.Path, headers, body, 200)
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(mockCluster)
-		
+
 	case "PUT":
 		var cluster map[string]interface{}
 		if err := json.Unmarshal([]byte(body), &cluster); err != nil {
@@ -218,7 +218,7 @@ func (ms *MockServer) handleClusterOperations(w http.ResponseWriter, r *http.Req
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		
+
 		brokers, exists := cluster["brokers"]
 		if !exists || brokers == "" {
 			ms.recordCall(r.Method, r.URL.Path, headers, body, 400)
@@ -226,11 +226,11 @@ func (ms *MockServer) handleClusterOperations(w http.ResponseWriter, r *http.Req
 			w.Write([]byte(`{"error":"brokers field is required and cannot be empty"}`))
 			return
 		}
-		
+
 		ms.recordCall(r.Method, r.URL.Path, headers, body, 200)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"message":"cluster updated successfully"}`))
-		
+
 	default:
 		ms.recordCall(r.Method, r.URL.Path, headers, body, 405)
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -240,7 +240,7 @@ func (ms *MockServer) handleClusterOperations(w http.ResponseWriter, r *http.Req
 func TestClusterAddIntegration(t *testing.T) {
 	mockServer := NewMockServer()
 	defer mockServer.Close()
-	
+
 	tests := []struct {
 		name           string
 		clusterConfig  ClusterConfig
@@ -290,43 +290,43 @@ func TestClusterAddIntegration(t *testing.T) {
 			addResponse:    0,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockServer.ClearCalls()
-			
+
 			err := simulateClusterAdd(mockServer.URL(), tt.clusterConfig)
-			
+
 			calls := mockServer.GetCalls()
-			
+
 			if tt.expectTestCall {
 				assert.GreaterOrEqual(t, len(calls), 1, "Should have at least one API call")
-				
+
 				testCall := calls[0]
 				assert.Equal(t, "POST", testCall.Method, "First call should be POST")
 				assert.Equal(t, "/api/v1/clusters/test", testCall.Path, "First call should be to test endpoint")
 				assert.Equal(t, tt.testResponse, testCall.Response, "Test response should match expected")
-				
+
 				var testConfig map[string]interface{}
 				json.Unmarshal([]byte(testCall.Body), &testConfig)
 				assert.Equal(t, tt.clusterConfig.Provider, testConfig["provider"], "Provider should match")
 				assert.Equal(t, tt.clusterConfig.Brokers, testConfig["brokers"], "Brokers should match")
 			}
-			
+
 			if tt.expectAddCall {
 				assert.GreaterOrEqual(t, len(calls), 2, "Should have cluster creation call")
-				
+
 				addCall := calls[1]
 				assert.Equal(t, "POST", addCall.Method, "Second call should be POST")
 				assert.Equal(t, "/api/v1/clusters", addCall.Path, "Second call should be to clusters endpoint")
 				assert.Equal(t, tt.addResponse, addCall.Response, "Add response should match expected")
-				
+
 				var addConfig map[string]interface{}
 				json.Unmarshal([]byte(addCall.Body), &addConfig)
 				assert.Equal(t, tt.clusterConfig.Name, addConfig["name"], "Name should match")
 				assert.Equal(t, tt.clusterConfig.Provider, addConfig["provider"], "Provider should match")
 				assert.Equal(t, tt.clusterConfig.Brokers, addConfig["brokers"], "Brokers should match")
-				
+
 				assert.NoError(t, err, "Add operation should succeed")
 			} else {
 				assert.Equal(t, 1, len(calls), "Should only have test call")
@@ -339,7 +339,7 @@ func TestClusterAddIntegration(t *testing.T) {
 func TestClusterEditIntegration(t *testing.T) {
 	mockServer := NewMockServer()
 	defer mockServer.Close()
-	
+
 	tests := []struct {
 		name          string
 		clusterName   string
@@ -362,26 +362,26 @@ func TestClusterEditIntegration(t *testing.T) {
 			expectPutCall: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockServer.ClearCalls()
-			
+
 			err := simulateClusterEdit(mockServer.URL(), tt.clusterName, tt.newConfig)
-			
+
 			calls := mockServer.GetCalls()
-			
+
 			if tt.expectGetCall {
 				assert.GreaterOrEqual(t, len(calls), 1, "Should have at least one API call")
-				
+
 				getCall := calls[0]
 				assert.Equal(t, "GET", getCall.Method, "First call should be GET")
 				assert.Contains(t, getCall.Path, tt.clusterName, "GET call should include cluster name")
 			}
-			
+
 			if tt.expectPutCall {
 				assert.GreaterOrEqual(t, len(calls), 3, "Should have multiple API calls for edit flow")
-				
+
 				var putCall *APICall
 				for _, call := range calls {
 					if call.Method == "PUT" {
@@ -389,16 +389,16 @@ func TestClusterEditIntegration(t *testing.T) {
 						break
 					}
 				}
-				
+
 				assert.NotNil(t, putCall, "Should have PUT call")
 				assert.Contains(t, putCall.Path, tt.clusterName, "PUT call should include cluster name")
-				
+
 				var updateConfig map[string]interface{}
 				json.Unmarshal([]byte(putCall.Body), &updateConfig)
-				
+
 				assert.NotEmpty(t, updateConfig["brokers"], "Brokers field should not be empty in update request")
 				assert.Equal(t, tt.newConfig.Brokers, updateConfig["brokers"], "Brokers should match new config")
-				
+
 				assert.NoError(t, err, "Edit operation should succeed")
 			}
 		})
@@ -437,7 +437,7 @@ func TestSafeStringFunction(t *testing.T) {
 			expected:     "default", // Non-string should return default
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := safeString(tt.value, tt.defaultValue)
@@ -449,30 +449,30 @@ func TestSafeStringFunction(t *testing.T) {
 func simulateClusterAdd(serverURL string, config ClusterConfig) error {
 	testConfig := buildConnectionTestConfig(config)
 	testBody, _ := json.Marshal(testConfig)
-	
+
 	resp, err := http.Post(serverURL+"/api/v1/clusters/test", "application/json", strings.NewReader(string(testBody)))
 	if err != nil {
 		return err
 	}
 	resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("connection test failed with status: %d", resp.StatusCode)
 	}
-	
+
 	addRequest := buildClusterRequest(config, "add")
 	addBody, _ := json.Marshal(addRequest)
-	
+
 	resp, err = http.Post(serverURL+"/api/v1/clusters", "application/json", strings.NewReader(string(addBody)))
 	if err != nil {
 		return err
 	}
 	resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("cluster creation failed with status: %d", resp.StatusCode)
 	}
-	
+
 	return nil
 }
 
@@ -482,41 +482,41 @@ func simulateClusterEdit(serverURL, clusterName string, newConfig ClusterConfig)
 		return err
 	}
 	resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to get current cluster config: %d", resp.StatusCode)
 	}
-	
+
 	testConfig := buildConnectionTestConfig(newConfig)
 	testBody, _ := json.Marshal(testConfig)
-	
+
 	resp, err = http.Post(serverURL+"/api/v1/clusters/test", "application/json", strings.NewReader(string(testBody)))
 	if err != nil {
 		return err
 	}
 	resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("connection test failed with status: %d", resp.StatusCode)
 	}
-	
+
 	updateRequest := buildClusterRequest(newConfig, "edit")
 	updateBody, _ := json.Marshal(updateRequest)
-	
+
 	req, _ := http.NewRequest("PUT", serverURL+"/api/v1/clusters/"+clusterName, strings.NewReader(string(updateBody)))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	client := &http.Client{}
 	resp, err = client.Do(req)
 	if err != nil {
 		return err
 	}
 	resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("cluster update failed with status: %d", resp.StatusCode)
 	}
-	
+
 	return nil
 }
 

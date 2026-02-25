@@ -220,12 +220,12 @@ func TestClusterRequestStructure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			requestPayload := buildClusterRequest(tt.config, tt.operation)
-			
+
 			// Verify all expected fields are present
 			for _, field := range tt.expectedFields {
 				assert.Contains(t, requestPayload, field, "Request should contain field: %s", field)
 			}
-			
+
 			// Verify no empty required fields
 			if tt.config.Name != "" {
 				assert.Equal(t, tt.config.Name, requestPayload["name"], "Name should match")
@@ -321,9 +321,9 @@ func TestBrokerStringFormatting(t *testing.T) {
 
 func TestConnectionTestConfiguration(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         ClusterConfig
-		expectedTest   map[string]interface{}
+		name               string
+		config             ClusterConfig
+		expectedTest       map[string]interface{}
 		shouldHaveSecurity bool
 	}{
 		{
@@ -388,23 +388,23 @@ func TestConnectionTestConfiguration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testConfig := buildConnectionTestConfig(tt.config)
-			
+
 			// Verify basic structure
 			assert.Equal(t, tt.expectedTest["provider"], testConfig["provider"], "Provider should match")
 			assert.Equal(t, tt.expectedTest["brokers"], testConfig["brokers"], "Brokers should match")
-			
+
 			// Verify security configuration
 			if tt.shouldHaveSecurity {
 				security, exists := testConfig["security"]
 				assert.True(t, exists, "Security section should exist")
 				securityMap, ok := security.(map[string]string)
 				assert.True(t, ok, "Security should be a map[string]string")
-				
+
 				expectedSecurity := tt.expectedTest["security"].(map[string]string)
 				assert.Equal(t, expectedSecurity["api_key"], securityMap["api_key"], "API key should match")
 				assert.Equal(t, expectedSecurity["api_secret"], securityMap["api_secret"], "API secret should match")
 			}
-			
+
 			// Verify provider-specific fields
 			if tt.config.Provider == "confluent" {
 				assert.Equal(t, tt.config.ClusterID, testConfig["cluster_id"], "Cluster ID should match")
@@ -498,11 +498,11 @@ func validateClusterConfig(config ClusterConfig) error {
 	if err := validateClusterName(config.Name); err != nil {
 		return err
 	}
-	
+
 	if config.Brokers == "" {
 		return fmt.Errorf("brokers cannot be empty")
 	}
-	
+
 	switch config.Provider {
 	case "confluent":
 		if config.APIKey == "" {
@@ -519,7 +519,7 @@ func validateClusterConfig(config ClusterConfig) error {
 			return fmt.Errorf("azure provider requires connection_string")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -527,24 +527,24 @@ func validateClusterName(name string) error {
 	if name == "" {
 		return fmt.Errorf("cluster name cannot be empty")
 	}
-	
+
 	if len(name) > 50 {
 		return fmt.Errorf("cluster name too long (max 50 characters)")
 	}
-	
+
 	if strings.Contains(name, " ") {
 		return fmt.Errorf("cluster name cannot contain spaces")
 	}
-	
+
 	for _, char := range name {
-		if !((char >= 'a' && char <= 'z') || 
-			 (char >= 'A' && char <= 'Z') || 
-			 (char >= '0' && char <= '9') || 
-			 char == '-' || char == '_') {
+		if !((char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '-' || char == '_') {
 			return fmt.Errorf("cluster name contains invalid characters (only alphanumeric, hyphens, and underscores allowed)")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -552,27 +552,27 @@ func formatBrokerString(input string) (string, error) {
 	if strings.TrimSpace(input) == "" {
 		return "", fmt.Errorf("brokers cannot be empty")
 	}
-	
+
 	brokers := strings.Split(input, ",")
 	var formatted []string
-	
+
 	for _, broker := range brokers {
 		broker = strings.TrimSpace(broker)
 		if broker == "" {
 			continue
 		}
-		
+
 		if !strings.Contains(broker, ":") {
 			return "", fmt.Errorf("invalid broker format: %s (should be host:port)", broker)
 		}
-		
+
 		formatted = append(formatted, broker)
 	}
-	
+
 	if len(formatted) == 0 {
 		return "", fmt.Errorf("no valid brokers found")
 	}
-	
+
 	return strings.Join(formatted, ","), nil
 }
 
@@ -582,23 +582,23 @@ func buildClusterRequest(config ClusterConfig, operation string) map[string]inte
 		"provider": config.Provider,
 		"brokers":  config.Brokers,
 	}
-	
+
 	if config.ClusterID != "" {
 		request["cluster_id"] = config.ClusterID
 	}
-	
+
 	if config.APIKey != "" {
 		request["api_key"] = config.APIKey
 	}
-	
+
 	if config.APISecret != "" {
 		request["api_secret"] = config.APISecret
 	}
-	
+
 	if config.ConnectionString != "" {
 		request["connection_string"] = config.ConnectionString
 	}
-	
+
 	return request
 }
 
@@ -607,26 +607,26 @@ func buildConnectionTestConfig(config ClusterConfig) map[string]interface{} {
 		"provider": config.Provider,
 		"brokers":  config.Brokers,
 	}
-	
+
 	if config.ClusterID != "" {
 		testConfig["cluster_id"] = config.ClusterID
 	}
-	
+
 	if config.ConnectionString != "" {
 		testConfig["connection_string"] = config.ConnectionString
 	}
-	
+
 	security := map[string]string{
 		"api_key":    config.APIKey,
 		"api_secret": config.APISecret,
 	}
-	
+
 	if config.Provider == "azure" {
 		security["api_secret"] = config.ConnectionString
 	}
-	
+
 	testConfig["security"] = security
-	
+
 	return testConfig
 }
 
@@ -669,15 +669,15 @@ func TestJSONSerialization(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			jsonData, err := json.Marshal(tt.config)
 			assert.NoError(t, err, "Should serialize to JSON without error")
-			
+
 			var deserialized ClusterConfig
 			err = json.Unmarshal(jsonData, &deserialized)
 			assert.NoError(t, err, "Should deserialize from JSON without error")
-			
+
 			assert.Equal(t, tt.config.Name, deserialized.Name, "Name should be preserved")
 			assert.Equal(t, tt.config.Provider, deserialized.Provider, "Provider should be preserved")
 			assert.Equal(t, tt.config.Brokers, deserialized.Brokers, "Brokers should be preserved")
-			
+
 			if tt.config.ClusterID != "" {
 				assert.Equal(t, tt.config.ClusterID, deserialized.ClusterID, "Cluster ID should be preserved")
 			}

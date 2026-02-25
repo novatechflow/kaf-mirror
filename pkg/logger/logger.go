@@ -9,7 +9,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package logger
 
 import (
@@ -86,7 +85,7 @@ func (l *Logger) log(level Level, format string, args ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	levelName := levelNames[level]
 	message := fmt.Sprintf(format, args...)
-	
+
 	logLine := fmt.Sprintf("[%s] %-5s [%s] %s", timestamp, levelName, caller, message)
 
 	switch level {
@@ -122,14 +121,14 @@ func (l *Logger) logWithTag(level Level, category, subcategory, jobID string, fo
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	levelName := levelNames[level]
 	message := fmt.Sprintf(format, args...)
-	
+
 	// Format: [timestamp] LEVEL [caller] [AI:category:subcategory] [job:jobID] message
 	var logLine string
 	if jobID != "" {
-		logLine = fmt.Sprintf("[%s] %-5s [%s] [AI:%s:%s] [job:%s] %s", 
+		logLine = fmt.Sprintf("[%s] %-5s [%s] [AI:%s:%s] [job:%s] %s",
 			timestamp, levelName, caller, category, subcategory, jobID, message)
 	} else {
-		logLine = fmt.Sprintf("[%s] %-5s [%s] [AI:%s:%s] %s", 
+		logLine = fmt.Sprintf("[%s] %-5s [%s] [AI:%s:%s] %s",
 			timestamp, levelName, caller, category, subcategory, message)
 	}
 
@@ -222,7 +221,6 @@ func SetLevel(level Level) {
 	defaultLogger.level = level
 }
 
-
 // GetProductionLogDir returns the appropriate log directory for production
 func GetProductionLogDir() string {
 	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
@@ -237,7 +235,7 @@ func GetProductionLogDir() string {
 			}
 		}
 	}
-	
+
 	// Fallback to local logs directory
 	return "logs"
 }

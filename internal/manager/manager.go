@@ -51,6 +51,8 @@ type JobManager struct {
 	aiAnalysisTicker     *time.Ticker
 	wg                   sync.WaitGroup
 	dbOpsWg              sync.WaitGroup
+	dbOpsMu              sync.Mutex
+	dbOpsClosed          bool
 	lastAIAnalysis       map[string]time.Time
 	lastAIMetric         map[string]database.ReplicationMetric
 	lastComplianceReport map[string]time.Time
@@ -151,7 +153,22 @@ func (jm *JobManager) Close() {
 	atomic.StoreInt32(&jm.closing, 1)
 	close(jm.close)
 	jm.wg.Wait()
+	jm.dbOpsMu.Lock()
+	jm.dbOpsClosed = true
+	jm.dbOpsMu.Unlock()
 	jm.dbOpsWg.Wait()
+}
+
+func (jm *JobManager) beginDBOp() bool {
+	jm.dbOpsMu.Lock()
+	defer jm.dbOpsMu.Unlock()
+
+	if jm.dbOpsClosed || atomic.LoadInt32(&jm.closing) == 1 {
+		return false
+	}
+
+	jm.dbOpsWg.Add(1)
+	return true
 }
 
 func (jm *JobManager) startPruning() {
@@ -1194,42 +1211,45 @@ func (jm *JobManager) CreateInventorySnapshot(jobID, snapshotType string) {
 	if atomic.LoadInt32(&jm.closing) == 1 {
 		return
 	}
-	jm.dbOpsWg.Add(2)
-	go func() {
-		defer jm.dbOpsWg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("Inventory capture panicked for source cluster: %v", r)
+	if jm.beginDBOp() {
+		go func() {
+			defer jm.dbOpsWg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Inventory capture panicked for source cluster: %v", r)
+				}
+			}()
+
+			// Check if close signal has been sent
+			select {
+			case <-jm.close:
+				return // Don't perform database operations during shutdown
+			default:
 			}
+
+			jm.captureClusterInventory(snapshotID, job.SourceClusterName, "source")
 		}()
+	}
 
-		// Check if close signal has been sent
-		select {
-		case <-jm.close:
-			return // Don't perform database operations during shutdown
-		default:
-		}
+	if jm.beginDBOp() {
+		go func() {
+			defer jm.dbOpsWg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Inventory capture panicked for target cluster: %v", r)
+				}
+			}()
 
-		jm.captureClusterInventory(snapshotID, job.SourceClusterName, "source")
-	}()
-
-	go func() {
-		defer jm.dbOpsWg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("Inventory capture panicked for target cluster: %v", r)
+			// Check if close signal has been sent
+			select {
+			case <-jm.close:
+				return // Don't perform database operations during shutdown
+			default:
 			}
+
+			jm.captureClusterInventory(snapshotID, job.TargetClusterName, "target")
 		}()
-
-		// Check if close signal has been sent
-		select {
-		case <-jm.close:
-			return // Don't perform database operations during shutdown
-		default:
-		}
-
-		jm.captureClusterInventory(snapshotID, job.TargetClusterName, "target")
-	}()
+	}
 
 	logger.Info("Inventory snapshot capture initiated for job %s", jobID)
 }

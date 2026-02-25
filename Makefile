@@ -1,4 +1,96 @@
-.PHONY: all build run start stop restart clean test docker docker-build docker-run docs
+SHELL := /bin/bash
+
+define PY_CODEQL_SUMMARY
+import glob, json
+from collections import Counter
+
+sarifs = sorted(glob.glob(".tmp/codeql/*.sarif"))
+if not sarifs:
+    print("No SARIF files found under .tmp/codeql/. Did make code-ql run successfully?")
+    raise SystemExit(2)
+
+def first_location(result):
+    locs = result.get("locations") or []
+    if not locs:
+        return ("unknown", 0)
+    pl = (locs[0].get("physicalLocation") or {})
+    file = ((pl.get("artifactLocation") or {}).get("uri") or "unknown")
+    line = ((pl.get("region") or {}).get("startLine") or 0)
+    return (file, line)
+
+total = 0
+levels = Counter()
+rows = []
+
+for path in sarifs:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    for run in data.get("runs", []):
+        for r in (run.get("results") or []):
+            lvl = (r.get("level") or "warning").lower()
+            rule = r.get("ruleId") or "no-rule"
+            msg = (r.get("message") or {}).get("text") or "no-message"
+            file, line = first_location(r)
+            levels[lvl] += 1
+            total += 1
+            rows.append((lvl, rule, file, line, msg))
+
+print("\nCodeQL SARIF Summary:")
+for p in sarifs:
+    print(f"  - {p}")
+print(f"\n  Total findings: {total}")
+if total:
+    print("  By level: " + ", ".join(f"{k}={v}" for k, v in sorted(levels.items())))
+print("")
+
+priority = {"error": 0, "warning": 1, "note": 2, "recommendation": 3}
+rows.sort(key=lambda x: (priority.get(x[0], 9), x[2], x[3], x[1]))
+
+limit = 50
+if not rows:
+    print("  OK: No findings.")
+else:
+    print(f"  Top {min(limit, len(rows))} findings:")
+    for i, (lvl, rule, file, line, msg) in enumerate(rows[:limit], 1):
+        msg = msg.replace("\n", " ").strip()
+        if len(msg) > 120:
+            msg = msg[:117] + "..."
+        print(f"  {i:>2}. [{lvl}] {rule}")
+        print(f"      {file}:{line}")
+        print(f"      {msg}")
+        print("")
+endef
+export PY_CODEQL_SUMMARY
+
+define PY_CODEQL_GATE
+import glob, json
+sarifs = sorted(glob.glob(".tmp/codeql/*.sarif"))
+errors = 0
+warnings = 0
+for path in sarifs:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    for run in data.get("runs", []):
+        for r in (run.get("results") or []):
+            lvl = (r.get("level") or "warning").lower()
+            if lvl == "error":
+                errors += 1
+            elif lvl == "warning":
+                warnings += 1
+
+if errors > 0:
+    print(f"\nCodeQL gate failed: {errors} blocking error(s) found.")
+    if warnings > 0:
+        print(f"Also found {warnings} non-blocking warning(s).")
+    raise SystemExit(1)
+
+print("\nCodeQL gate passed: no blocking errors found.")
+if warnings > 0:
+    print(f"Note: {warnings} non-blocking warning(s) were found.")
+endef
+export PY_CODEQL_GATE
+
+.PHONY: all build run start stop restart clean test check test-smoke vet race fmt fmt-check commit-check code-ql code-ql-summary code-ql-gate docker docker-build docker-run docs
 
 BIN_DIR=bin
 KAF_MIRROR_BINARY=$(BIN_DIR)/kaf-mirror
@@ -56,13 +148,52 @@ clean:
 	@rm -rf $(BIN_DIR)
 	@rm -f $(PID_FILE)
 
-test:
-	@echo "Running tests..."
-	@go test ./tests/...
+test: check vet race
+
+check: test-smoke
+
+test-smoke:
+	@echo "Running smoke tests..."
+	@go test ./...
+
+vet:
 	@echo "Running go vet..."
 	@go vet ./...
+
+race:
 	@echo "Running race tests..."
 	@go test -race ./...
+
+fmt:
+	@unformatted=$$(gofmt -l .); \
+	if [ -n "$$unformatted" ]; then \
+		echo "Found unformatted files. Auto-formatting:"; \
+		echo "$$unformatted"; \
+		gofmt -w .; \
+	else \
+		echo "All Go files are formatted correctly."; \
+	fi
+
+fmt-check:
+	@unformatted=$$(gofmt -l .); \
+	if [ -n "$$unformatted" ]; then \
+		echo "The following files are not gofmt-formatted:"; \
+		echo "$$unformatted"; \
+		echo "Run 'make fmt' or 'gofmt -w .' to fix formatting."; \
+		exit 1; \
+	fi
+
+commit-check: fmt vet test-smoke race code-ql-gate
+	@echo "commit-check completed."
+
+code-ql:
+	bash scripts/codeql_local.sh
+
+code-ql-summary: code-ql
+	@printf "%s\n" "$$PY_CODEQL_SUMMARY" | python3 -
+
+code-ql-gate: code-ql-summary
+	@printf "%s\n" "$$PY_CODEQL_GATE" | python3 -
 
 docker-build:
 	@echo "Building Docker image..."

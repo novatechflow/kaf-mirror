@@ -21,11 +21,11 @@ func TestGetMirrorState_Empty(t *testing.T) {
 	database.CreateCluster(ctx.Server.Db, targetCluster)
 
 	job := &database.ReplicationJob{
-		ID:   "test-job",
-		Name: "Test Job",
+		ID:                "test-job",
+		Name:              "Test Job",
 		SourceClusterName: "src",
 		TargetClusterName: "tgt",
-		Status: "active",
+		Status:            "active",
 	}
 	database.CreateJob(ctx.Server.Db, job)
 
@@ -41,7 +41,7 @@ func TestGetMirrorState_Empty(t *testing.T) {
 
 	assert.Equal(t, "test-job", response["job_id"])
 	assert.Nil(t, response["mirror_progress"])
-	assert.Nil(t, response["resume_points"])  
+	assert.Nil(t, response["resume_points"])
 	assert.Nil(t, response["mirror_gaps"])
 	assert.Nil(t, response["state_analysis"])
 }
@@ -56,27 +56,27 @@ func TestGetMirrorState_WithData(t *testing.T) {
 	database.CreateCluster(ctx.Server.Db, targetCluster)
 
 	job := &database.ReplicationJob{
-		ID:   "test-job",
-		Name: "Test Job",
+		ID:                "test-job",
+		Name:              "Test Job",
 		SourceClusterName: "src",
 		TargetClusterName: "tgt",
-		Status: "active",
+		Status:            "active",
 	}
 	database.CreateJob(ctx.Server.Db, job)
 
 	progress := database.MirrorProgress{
-		JobID: "test-job",
-		SourceTopic: "test-topic",
-		TargetTopic: "test-topic",
-		PartitionID: 0,
-		SourceOffset: 100,
-		TargetOffset: 100,
-		SourceHighWaterMark: 120,
-		TargetHighWaterMark: 120,
+		JobID:                "test-job",
+		SourceTopic:          "test-topic",
+		TargetTopic:          "test-topic",
+		PartitionID:          0,
+		SourceOffset:         100,
+		TargetOffset:         100,
+		SourceHighWaterMark:  120,
+		TargetHighWaterMark:  120,
 		LastReplicatedOffset: 100,
-		ReplicationLag: 0,
-		LastUpdated: time.Now(),
-		Status: "active",
+		ReplicationLag:       0,
+		LastUpdated:          time.Now(),
+		Status:               "active",
 	}
 	database.UpdateMirrorProgress(ctx.Server.Db, progress)
 
@@ -91,13 +91,13 @@ func TestGetMirrorState_WithData(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&response)
 
 	assert.Equal(t, "test-job", response["job_id"])
-	
+
 	// Should have a single mirror_progress object (not array)
 	assert.NotNil(t, response["mirror_progress"])
 	mirrorProgress := response["mirror_progress"].(map[string]interface{})
 	assert.Equal(t, "test-topic", mirrorProgress["source_topic"])
 	assert.Equal(t, float64(100), mirrorProgress["source_offset"]) // JSON numbers are float64
-	
+
 	// Other fields should still be null since we only have progress data
 	assert.Nil(t, response["resume_points"])
 	assert.Nil(t, response["mirror_gaps"])

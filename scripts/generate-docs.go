@@ -285,7 +285,7 @@ func convertMarkdownToHTML(markdownFile, htmlFile string) error {
 
 	// Generate navigation and write to a temporary buffer
 	navHTML := generateNavigation(navItems)
-	
+
 	// Re-open file for second pass
 	file, err = os.Open(markdownFile)
 	if err != nil {
@@ -318,10 +318,10 @@ func convertMarkdownToHTML(markdownFile, htmlFile string) error {
 	if inCodeBlock {
 		htmlOutput.WriteString("</code></pre>\n")
 	}
-	
+
 	// Close the last command card
 	htmlOutput.WriteString("</div>\n")
-	
+
 	htmlOutput.WriteString(`
         </main>
     </div>
@@ -388,10 +388,10 @@ func convertMarkdownLine(line string) string {
 	if level := getHeaderLevel(line); level > 0 {
 		title := strings.TrimSpace(line[level:])
 		anchor := generateAnchor(title)
-		
+
 		// Check if this is a main command (starts with "mirror-cli" and is h1 or h3)
 		isMainCommand := (level == 1 || level == 3) && strings.HasPrefix(title, "mirror-cli")
-		
+
 		if isMainCommand {
 			if level == 1 {
 				return fmt.Sprintf(`<div class="command-card" id="%s"><h1 id="%s">%s</h1>`, anchor, anchor, html.EscapeString(title))
@@ -420,10 +420,10 @@ func convertMarkdownLine(line string) string {
 func processInlineMarkdown(text string) string {
 	boldRe := regexp.MustCompile(`\*\*([^*]+)\*\*`)
 	text = boldRe.ReplaceAllString(text, "<strong>$1</strong>")
-	
+
 	codeRe := regexp.MustCompile("`([^`]+)`")
 	text = codeRe.ReplaceAllString(text, "<code>$1</code>")
-	
+
 	return text
 }
 
